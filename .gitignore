@@ -1,0 +1,14 @@
+*.pyc
+*.swp
+.vscode
+.pytest_cache
+.idea
+.DS_Store
+.coverage
+coverage.xml
+htmlcov
+pylint.log
+pyflakes.log
+pytest-results.xml
+/flake8-report/
+.cache

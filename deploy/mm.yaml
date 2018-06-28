@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mm-sa
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: mm-rolebinding
+subjects:
+- kind: ServiceAccount
+  name: mm-sa
+  namespace: <my-namespace>
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+    name: minion-manager
+spec:
+    replicas: 1
+    template:
+        metadata:
+            labels:
+                app: minion-manager
+        spec:
+            tolerations:
+            - effect: NoSchedule
+              key: node-role.kubernetes.io/master
+            nodeSelector:
+              kubernetes.io/role: master
+            serviceAccountName: mm-sa
+            containers:
+              - name: minion-manager
+                image: shrinand/k8s-minion-manager:v0.1
+                command: ["python", "./minion_manager.py", "--scaling-groups", "<asg_name_1>", "<asg_name_2>", "<asg_name_3>", "--region", "us-west-2"]
+                resources:
+                    requests:
+                        cpu: 50m
+                        memory: 80Mi
