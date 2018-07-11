@@ -5,19 +5,21 @@ class AWSAutoscalinGroupMM(object):
     """
     This class has metadata associated with an autoscaling group.
     """
-    # 'asg_info' is populated with the returned value of
-    # describe_autoscaling_groups() API.
-    asg_info = None
 
-    # 'lc_info' is the LaunchConfiguration info returned by
-    # describe_launch_configurations() API.
-    lc_info = None
+    def __init__(self):
+        # 'asg_info' is populated with the returned value of
+        # describe_autoscaling_groups() API.
+        self.asg_info = None
 
-    # 'bid_info' is a simple dictionary with keys 'type' and 'bid_price'.
-    bid_info = {}
+        # 'lc_info' is the LaunchConfiguration info returned by
+        # describe_launch_configurations() API.
+        self.lc_info = None
 
-    # Metadata about all instances running in this ASG, keyed by instance-id.
-    instance_info = {}
+        # 'bid_info' is a simple dictionary with keys 'type' and 'bid_price'.
+        self.bid_info = {}
+
+        # Metadata about all instances running in this ASG, keyed by instance-id.
+        self.instance_info = {}
 
     def get_name(self):
         """ Convenience method to get the name of the ASG. """
@@ -27,6 +29,10 @@ class AWSAutoscalinGroupMM(object):
         """ Sets the asg_info. """
         assert asg_info is not None, "Can't set ASG info to None!"
         self.asg_info = asg_info
+        for tag in self.asg_info['Tags']:
+            if tag.get('Key', None) == 'k8s-minion-manager':
+                if tag['Value'] not in ("use-spot", "no-spot"):
+                    tag['Value'] = 'no-spot'
 
     def set_lc_info(self, lc_info):
         """ Sets the lc_info. """
@@ -74,3 +80,31 @@ class AWSAutoscalinGroupMM(object):
     def get_instances(self):
         """ Returns the 'instance' objects. """
         return self.instance_info.values()
+
+    def get_mm_tag(self):
+        for tag in self.asg_info['Tags']:
+            if tag.get('Key', None) == 'k8s-minion-manager':
+                return tag['Value'].lower()
+        return "no-spot"
+
+    def get_instance_name(self, instance):
+        """ Returns the name of the instance """
+        if "Tags" not in instance:
+           return None
+        for t in instance.Tags:
+            if t["Key"] == "Name":
+               return t["Value"]
+        return None
+
+    def is_instance_running(self, instance):
+        """ Returns whether the instance is running """
+        if "State" not in instance:
+            return False
+
+        if "Name" not in instance["State"]:
+            return False
+
+        if instance["State"]["Name"].lower() != "running":
+            return False
+
+        return True

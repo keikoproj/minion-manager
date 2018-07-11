@@ -35,8 +35,8 @@ spec:
             serviceAccountName: mm-sa
             containers:
               - name: minion-manager
-                image: shrinand/k8s-minion-manager:v0.1
-                command: ["python", "./minion_manager.py", "--scaling-groups", "<asg_name_1>", "<asg_name_2>", "<asg_name_3>", "--region", "us-west-2"]
+                image: shrinand/k8s-minion-manager:v0.2-dev
+                command: ["python", "./minion_manager.py", "--region", "us-west-2", "--cluster-name", "<my-cluster-name>"]
                 resources:
                     requests:
                         cpu: 50m

@@ -32,8 +32,9 @@ class AWSMinionManager(MinionManagerBase):
     This class implements the minion-manager functionality for AWS.
     """
 
-    def __init__(self, scaling_groups, region, **kwargs):
-        super(AWSMinionManager, self).__init__(scaling_groups, region)
+    def __init__(self, cluster_name, region, refresh_interval_seconds=300, **kwargs):
+        super(AWSMinionManager, self).__init__(region)
+        self._cluster_name = cluster_name
         aws_profile = kwargs.get("aws_profile", None)
         if aws_profile:
             boto_session = boto3.Session(region_name=region,
@@ -43,6 +44,7 @@ class AWSMinionManager(MinionManagerBase):
         self._ac_client = boto_session.client('autoscaling')
         self._ec2_client = boto_session.client('ec2')
 
+        self._refresh_interval_seconds = refresh_interval_seconds
         self._asg_metas = []
         self.instance_type = None
 
@@ -58,7 +60,7 @@ class AWSMinionManager(MinionManagerBase):
 
     @staticmethod
     @retry(wait_exponential_multiplier=1000, stop_max_attempt_number=3)
-    def describe_asg_with_retries(ac_client, asgs):
+    def describe_asg_with_retries(ac_client, asgs=[]):
         """
         AWS describe_auto_scaling_groups with retries.
         """
@@ -76,15 +78,38 @@ class AWSMinionManager(MinionManagerBase):
             InstanceIds=instance_ids)
         return bunchify(response)
 
+    @staticmethod
+    @retry(wait_exponential_multiplier=1000, stop_max_attempt_number=3)
+    def get_asgs_with_tags(cluster_name, ac_client):
+        """
+        Get AWS describe_auto_scaling_groups with k8s-minion-manager tags.
+        """
+        response = {}
+        response["AutoScalingGroups"] = []
+        resp = ac_client.describe_auto_scaling_groups(MaxRecords=100)
+        for r in resp["AutoScalingGroups"]:
+            is_candidate = False
+            # Scan for KubernetesCluster name. If the value matches the cluster_name
+            # provided in the input, set 'is_candidate'.
+            for tag in r['Tags']:
+                if tag['Key'] == 'KubernetesCluster' and tag['Value'] == cluster_name:
+                    is_candidate = True
+            if not is_candidate:
+                continue
+            for tag in r['Tags']:
+                if tag['Key'] == 'k8s-minion-manager':
+                    response["AutoScalingGroups"].append(r)
+                    break
+        return bunchify(response)
+
     def discover_asgs(self):
         """ Query AWS and get metadata about all required ASGs. """
-        response = AWSMinionManager.describe_asg_with_retries(
-            self._ac_client, self._scaling_groups)
+        response = AWSMinionManager.get_asgs_with_tags(self._cluster_name, self._ac_client)
         for asg in response.AutoScalingGroups:
             asg_mm = AWSAutoscalinGroupMM()
             asg_mm.set_asg_info(asg)
             self._asg_metas.append(asg_mm)
-            logger.info("Adding asg %s", asg_mm.get_name())
+            logger.info("Adding asg %s (%s)", asg_mm.get_name(), asg_mm.get_mm_tag())
 
     def populate_current_config(self):
         """
@@ -116,22 +141,31 @@ class AWSMinionManager(MinionManagerBase):
                         launch_config.LaunchConfigurationName, bid_info)
 
     def update_needed(self, asg_meta):
-        """ Checks if an ASG needs to be updated to use spot-instances. """
+        """ Checks if an ASG needs to be updated. """
         try:
+            asg_tag = asg_meta.get_mm_tag()
             bid_info = asg_meta.get_bid_info()
+            if asg_tag == "no-spot":
+                if bid_info["type"] == "spot":
+                    logger.info("ASG %s configured with on-demand but currently using spot. Update needed", asg_meta.get_name())
+                    return True
+                elif bid_info["type"] == "on-demand":
+                    logger.info("ASG %s configured with on-demand and currently using on-demand. No update needed", asg_meta.get_name())
+                    return False
+
+            # The asg_tag is "spot".
             if bid_info["type"] == "on-demand":
-                logger.info("ASG %s needs to be updated", asg_meta.get_name())
+                logger.info("ASG %s configured with spot but currently using on-demand. Update needed", asg_meta.get_name())
                 return True
 
             assert bid_info["type"] == "spot"
             if self.check_scaling_group_instances(asg_meta):
                 # Desired # of instances running. No updates needed.
-                logger.info("ASG %s does not need to be updated",
-                            asg_meta.get_name())
+                logger.info("Desired number of instances running in ASG %s. No update needed", asg_meta.get_name())
                 return False
             else:
                 # Desired # of instances are not running.
-                logger.info("ASG %s needs to be updated", asg_meta.get_name())
+                logger.info("Desired number of instance not running in ASG %s. Update needed", asg_meta.get_name())
                 return True
         except Exception as ex:
             logger.error("Failed while checking minions in %s: %s",
@@ -235,14 +269,14 @@ class AWSMinionManager(MinionManagerBase):
             spot_price = new_bid_info["price"]
         else:
             spot_price = None
-        logger.info("ASG( %s ): New bid price %s", asg_meta.get_name(),
+        logger.info("ASG(%s): New bid price %s", asg_meta.get_name(),
                     spot_price)
 
         if launch_config.LaunchConfigurationName[-2:] == "-0":
             new_lc_name = launch_config.LaunchConfigurationName[:-2]
         else:
             new_lc_name = launch_config.LaunchConfigurationName + "-0"
-        logger.info("ASG( %s ): New launch-config name: %s",
+        logger.info("ASG(%s): New launch-config name: %s",
                     asg_meta.get_name(), new_lc_name)
 
         if spot_price is None:
@@ -283,66 +317,93 @@ class AWSMinionManager(MinionManagerBase):
         return
 
     @retry(wait_exponential_multiplier=1000, stop_max_attempt_number=3)
-    def run_or_die(self, instance_id, asg_meta, instance_type):
-        """
-        Terminates the given "on-demand" instance if the current bid
-        is "spot".
-        """
+    def run_or_die(self, instance, asg_meta):
+        """ Terminates the given instance. """
         zones = asg_meta.asg_info.AvailabilityZones
-        bid_info = self.bid_advisor.get_new_bid(zones, instance_type)
+        bid_info = self.bid_advisor.get_new_bid(zones, instance.InstanceType)
         try:
-            if bid_info["type"] == "spot":
-                self._ec2_client.terminate_instances(InstanceIds=[instance_id])
-                logger.info("Terminated instance %s", instance_id)
-                asg_meta.remove_instance(instance_id)
-                logger.info("Removed instance %s from ASG", instance_id)
-            else:
-                logger.info("Continuing to run %s", instance_id)
+            # If the instance is spot and the ASG is spot: don't kill the instance.
+            if asg_meta.get_mm_tag() == "use-spot" and 'InstanceLifecycle' in instance:
+                logger.debug("Instance %s (%s) is spot and ASG %s is spot. Ignoring termination.",
+                    asg_meta.get_instance_name(instance), instance.InstanceId, asg_meta.get_name())
+                return
+
+            # If the instance is on-demand and the ASG is is on-demand: don't kill the instance.
+            if asg_meta.get_mm_tag() == "no-spot" and 'InstanceLifecycle' not in instance:
+                logger.debug("Instance %s (%s) is on-demand and ASG %s is on-demand. Ignoring termination.",
+                    asg_meta.get_instance_name(instance), instance.InstanceId, asg_meta.get_name())
+                return
+
+            self._ec2_client.terminate_instances(InstanceIds=[instance.InstanceId])
+            logger.info("Terminated instance %s", instance.InstanceId)
+            asg_meta.remove_instance(instance.InstanceId)
+            logger.info("Removed instance %s from ASG", instance.InstanceId)
         except Exception as ex:
             logger.error("Failed in run_or_die: %s", str(ex))
         finally:
-            self.on_demand_kill_threads.pop(instance_id, None)
+            self.on_demand_kill_threads.pop(instance.InstanceId, None)
 
     def schedule_instance_termination(self, asg_meta):
         """
-        Checks whether any of the given instances are "on-demand" and schedules
-        their termination.
+        Checks whether any of the instances in the asg need to be terminated.
         """
         instances = asg_meta.get_instances()
         if len(instances) == 0:
             return
 
+        # If the ASG is configured to use "no-spot" or the required tag does not exist,
+        # do not schedule any instance termination.
+        asg_tag = asg_meta.get_mm_tag()
         for instance in instances:
             # On-demand instances don't have the InstanceLifecycle field in
             # their responses. Spot instances have InstanceLifecycle=spot.
-            if 'InstanceLifecycle' not in instance:
-                launch_time = instance.LaunchTime
-                current_time = datetime.utcnow().replace(tzinfo=pytz.utc)
-                elapsed_seconds = (current_time - launch_time). \
-                    total_seconds()
 
-                # If the instance is running for hours, only the seconds in
-                # the current hour need to be used.
-                elapsed_seconds_in_hour = elapsed_seconds % \
-                    SECONDS_PER_HOUR
-                # Start a thread that will check whether the instance
-                # should continue running ~40 minutes later.
-                # TODO: Make this time configurable!
-                seconds_before_check = abs((40.0 + randint(0, 19)) *
-                                           SECONDS_PER_MINUTE -
-                                           elapsed_seconds_in_hour)
-                instance_id = instance.InstanceId
-                if instance_id in self.on_demand_kill_threads.keys():
-                    continue
-                logger.info("Scheduling thread for %s after %s seconds",
-                            instance_id, seconds_before_check)
-                args = [instance_id, asg_meta, instance.InstanceType]
-                timed_thread = Timer(seconds_before_check, self.run_or_die,
-                                     args=args)
-                timed_thread.setDaemon(True)
-                timed_thread.start()
-                self.on_demand_kill_threads[instance_id] = timed_thread
+            # If the instance type and the ASG tag match, do not terminate the instance.
+            is_spot = 'InstanceLifecycle' in instance
+            if is_spot and asg_tag == "use-spot":
+                logger.debug("Instance %s is spot and ASG %s is configured for spot. Ignoring termination request", instance.InstanceId, asg_meta.get_name())
+                continue
 
+            if asg_tag == "no-spot" and not is_spot:
+                logger.debug("Instance %s is on-demand and ASG %s is configured for on-demand. Ignoring termination request", instance.InstanceId, asg_meta.get_name())
+                continue
+
+            if not asg_meta.is_instance_running(instance):
+                logger.debug("Instance %s not running. Ignoring termination request", instance.InstanceId)
+                continue
+
+            launch_time = instance.LaunchTime
+            current_time = datetime.utcnow().replace(tzinfo=pytz.utc)
+            elapsed_seconds = (current_time - launch_time). \
+                total_seconds()
+
+            # If the instance is running for hours, only the seconds in
+            # the current hour need to be used.
+            #elapsed_seconds_in_hour = elapsed_seconds % \
+            #    SECONDS_PER_HOUR
+            # Start a thread that will check whether the instance
+            # should continue running ~40 minutes later.
+
+            # Earlier, the instances were terminated at approx. the boundary of 1 hour since
+            # EC2 prices were for every hour. However, it has changed now and pricing is
+            # per minute.
+            #seconds_before_check = abs((40.0 + randint(0, 19)) *
+            #                            SECONDS_PER_MINUTE -
+            #                            elapsed_seconds_in_hour)
+            # TODO: Make this time configurable!
+            seconds_before_check = 10
+            instance_id = instance.InstanceId
+            if instance_id in self.on_demand_kill_threads.keys():
+                continue
+
+            logger.info("Scheduling termination thread for %s (%s) in ASG %s (%s) after %s seconds",
+                        asg_meta.get_instance_name(instance), instance_id, asg_meta.get_name(), asg_tag, seconds_before_check)
+            args = [instance, asg_meta]
+            timed_thread = Timer(seconds_before_check, self.run_or_die,
+                                    args=args)
+            timed_thread.setDaemon(True)
+            timed_thread.start()
+            self.on_demand_kill_threads[instance_id] = timed_thread
         return
 
     def populate_instances(self, asg_meta):
@@ -354,10 +415,16 @@ class AWSMinionManager(MinionManagerBase):
         for instance in asg.Instances:
             instance_ids.append(instance.InstanceId)
 
-        response = self.get_instances_with_retries(self._ec2_client,
-                                                   instance_ids)
+        if len(instance_ids) <= 0:
+            return
+
+        response = self.get_instances_with_retries(self._ec2_client, instance_ids)
+        running_instances = []
         for resv in response.Reservations:
-            asg_meta.add_instances(resv.Instances)
+            for instance in resv.Instances:
+                if asg_meta.is_instance_running(instance):
+                    running_instances.append(instance)
+        asg_meta.add_instances(running_instances)
 
     def minion_manager_work(self):
         """ The main work for dealing with spot-instances happens here. """
@@ -366,16 +433,26 @@ class AWSMinionManager(MinionManagerBase):
             try:
                 # Iterate over all asgs and update them if needed.
                 for asg_meta in self._asg_metas:
-                    logger.info("ASG: %s", asg_meta.get_name())
-
-                    # Populate info. about all instance in the ASG
+                    # Populate info. about all instances in the ASG
                     self.populate_instances(asg_meta)
 
-                    # Check if any of these are on-demand instances that can
-                    # be terminated.
+                    # Check if any of these are instances that need to be terminated.
                     self.schedule_instance_termination(asg_meta)
 
                     if not self.update_needed(asg_meta):
+                        continue
+
+                    # Some update is needed. This can mean:
+                    # 1. The desired # of instances are not running
+                    # 2. The ASG tag and the type of running instances do not match.
+                    # 3.
+                    bid_info = asg_meta.get_bid_info()
+                    if asg_meta.get_mm_tag() == "no-spot" and bid_info["type"] == "spot":
+                        new_bid_info = {}
+                        new_bid_info["type"] = "on-demand"
+                        new_bid_info["price"] = ""
+                        logger.info("ASG %s configured with no-spot but currently using spot. Updating...", asg_meta.get_name())
+                        self.update_scaling_group(asg_meta, new_bid_info)
                         continue
 
                     new_bid_info = self.bid_advisor.get_new_bid(
@@ -385,17 +462,25 @@ class AWSMinionManager(MinionManagerBase):
                     # Update ASGs iff new bid is different from current bid.
                     if self.are_bids_equal(asg_meta.bid_info, new_bid_info):
                         logger.info("No change in bid info for %s",
-                                    asg_meta.get_name())
+                                   asg_meta.get_name())
                         continue
-                    logger.info("Got new bid info from BidAdvisor: %s",
-                                new_bid_info)
+                    logger.info("Got new bid info from BidAdvisor: %s", new_bid_info)
+
                     self.update_scaling_group(asg_meta, new_bid_info)
             except Exception as ex:
                 logger.exception("Failed while checking instances in ASG: " +
                                  str(ex))
             finally:
                 # Cooling off period. TODO: Make this configurable!
-                time.sleep(10 * SECONDS_PER_MINUTE)
+                time.sleep(self._refresh_interval_seconds)
+
+                try:
+                    # Discover and populate the correct ASGs.
+                    del self._asg_metas[:]
+                    self.discover_asgs()
+                    self.populate_current_config()
+                except Exception as ex:
+                    raise Exception("Failed to discover/populate current ASG info: " + str(ex))
 
     def run(self):
         """Entrypoint for the AWS specific minion-manager."""
@@ -436,7 +521,6 @@ class AWSMinionManager(MinionManagerBase):
                 # the instances are actually terminated. If this check happens
                 # during that time, the DesiredCapacity may be < actual number
                 # of instances.
-                logger.info("Desired number of minions running.")
                 return True
             else:
                 # It is possible that the autoscaler may have just increased
@@ -446,8 +530,8 @@ class AWSMinionManager(MinionManagerBase):
                 # actual state to converge), sleep for 1 minute and try again.
                 # If the state doesn't converge even after retries, return
                 # False.
-                logger.info("Desired number of instances not running." +
-                            "Desired %d, actual %d", asg.DesiredCapacity,
+                logger.info("Desired number of instances not running in asg %s." +
+                            "Desired %d, actual %d", asg_meta.get_name(), asg.DesiredCapacity,
                             len(asg.Instances))
                 attempts_to_converge = attempts_to_converge - 1
 

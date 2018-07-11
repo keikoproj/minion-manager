@@ -83,9 +83,7 @@ class AWSBidAdvisorTest(unittest.TestCase):
         bidadv.spot_price_list = [{'InstanceType': instance_type,
                                    'SpotPrice': '80',
                                    'AvailabilityZone': "us-west-2b"}]
-        print("1234")
         bid_info = bidadv.get_new_bid(zones, instance_type)
-        print(bid_info)
         assert bid_info is not None, "BidAdvisor didn't return any " + \
             "now bid information."
         assert bid_info["type"] == "spot"

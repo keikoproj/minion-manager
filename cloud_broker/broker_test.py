@@ -16,9 +16,9 @@ class BrokerTest(unittest.TestCase):
         """
 
         # Verify that a minion-manager object is returned for "aws"
-        mgr = Broker.get_impl_object("aws", ["asg_1"], "us-west-2")
+        mgr = Broker.get_impl_object("aws", "mycluster", "us-west-2")
         assert mgr is not None, "No minion-manager returned!"
 
         # For non-aws clouds, a NotImplementedError is returned.
         with pytest.raises(NotImplementedError):
-            mgr = Broker.get_impl_object("google", [], "")
+            mgr = Broker.get_impl_object("google", "mycluster", "")

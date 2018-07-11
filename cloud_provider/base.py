@@ -11,11 +11,9 @@ import abc
 class MinionManagerBase(object):
     """ Base class for MinionManager. """
     __metaclass__ = abc.ABCMeta
-    _scaling_groups = []
     _region = None
 
-    def __init__(self, scaling_groups, region):
-        self._scaling_groups = scaling_groups
+    def __init__(self, region):
         self._region = region
 
     @abc.abstractmethod

@@ -22,6 +22,7 @@ class AWSMinionManagerTest(unittest.TestCase):
 
     session = boto3.Session(region_name="us-west-2")
     autoscaling = session.client("autoscaling")
+    ec2 = session.client("ec2")
 
     @mock_autoscaling
     @mock_sts
@@ -38,13 +39,18 @@ class AWSMinionManagerTest(unittest.TestCase):
 
     @mock_autoscaling
     @mock_sts
-    def create_mock_asgs(self):
+    def create_mock_asgs(self, minion_manager_tag="use-spot"):
         """
         Creates mocked AWS resources.
         """
-        response = self.autoscaling.create_launch_configuration(
-            LaunchConfigurationName=self.lc_name, ImageId='ami-f00bad',
-            SpotPrice="0.100", KeyName='kubernetes-some-key')
+        if minion_manager_tag == "use-spot":
+            response = self.autoscaling.create_launch_configuration(
+                LaunchConfigurationName=self.lc_name, ImageId='ami-f00bad',
+                SpotPrice="0.100", KeyName='kubernetes-some-key')
+        else:
+            response = self.autoscaling.create_launch_configuration(
+                LaunchConfigurationName=self.lc_name, ImageId='ami-f00bad',
+                KeyName='kubernetes-some-key')
         resp = bunchify(response)
         assert resp.ResponseMetadata.HTTPStatusCode == 200
 
@@ -54,23 +60,30 @@ class AWSMinionManagerTest(unittest.TestCase):
             DesiredCapacity=3,
             AvailabilityZones=['us-west-2a'],
             Tags=[{'ResourceId': self.cluster_name_id,
-                   'Key': 'KubernetesCluster', 'Value': self.cluster_name_id}]
+                   'Key': 'KubernetesCluster', 'Value': self.cluster_name_id},
+                  {'ResourceId': self.cluster_name_id,
+                   'Key': 'k8s-minion-manager', 'Value': minion_manager_tag},
+                  {'ResourceId': self.cluster_name_id,
+                   'PropagateAtLaunch': True,
+                   'Key': 'Name', 'Value': "my-instance-name"},
+                  ]
         )
         resp = bunchify(response)
         assert resp.ResponseMetadata.HTTPStatusCode == 200
 
-    def basic_setup_and_test(self):
+    def basic_setup_and_test(self, minion_manager_tag="use-spot"):
         """
         Creates the mock setup for tests, creates the aws_mm object and does
         some basic sanity tests before returning it.
         """
-        self.create_mock_asgs()
-        aws_mm = AWSMinionManager([self.asg_name], "us-west-2")
+        self.create_mock_asgs(minion_manager_tag)
+        aws_mm = AWSMinionManager(self.cluster_name_id, "us-west-2", refresh_interval_seconds=50)
         assert len(aws_mm.get_asg_metas()) == 0, \
             "ASG Metadata already populated?"
 
         aws_mm.discover_asgs()
         assert aws_mm.get_asg_metas() is not None, "ASG Metadata not populated"
+        assert len(aws_mm.get_asg_metas()) == 1, "ASG not discovered"
 
         for asg in aws_mm.get_asg_metas():
             assert asg.asg_info.AutoScalingGroupName == self.asg_name
@@ -99,6 +112,15 @@ class AWSMinionManagerTest(unittest.TestCase):
         orig_instance_count = len(asg.get_instance_info())
         aws_mm.populate_instances(asg)
         assert len(asg.get_instance_info()) == orig_instance_count + 3
+
+        instance = asg.get_instance_info().itervalues().next()
+        assert asg.get_instance_name(instance) == "my-instance-name"
+
+        assert asg.is_instance_running(instance) == True
+        # Simulate that the instance has been terminated.
+        instance.State.Code = 32
+        instance.State.Name = "shutting-down"
+        assert asg.is_instance_running(instance) == False
 
     @mock_autoscaling
     @mock_sts
@@ -159,14 +181,33 @@ class AWSMinionManagerTest(unittest.TestCase):
         """
         Tests that the AWSMinionManager correctly checks if updates are needed.
         """
-        awsmm = self.basic_setup_and_test()
-
+        # Try to use spot-instances.
+        awsmm = self.basic_setup_and_test("use-spot")
         asg_meta = awsmm.get_asg_metas()[0]
         # Moto returns that all instances are running. No updates needed.
         assert awsmm.update_needed(asg_meta) is False
+        # Simulate that the running instances are on-demand instances
         bid_info = {"type": "on-demand"}
         asg_meta.set_bid_info(bid_info)
+        assert awsmm.update_needed(asg_meta) is True
+        # Simulate that the running instances are spot instances
+        bid_info = {"type": "spot"}
+        asg_meta.set_bid_info(bid_info)
+        assert awsmm.update_needed(asg_meta) is False
 
+        # Try to ony use on-demand instances.
+        awsmm = self.basic_setup_and_test("no-spot")
+        asg_meta = awsmm.get_asg_metas()[0]
+        assert awsmm.update_needed(asg_meta) is False
+
+        # Simulate that the running instances are on-demand instances
+        bid_info = {"type": "on-demand"}
+        asg_meta.set_bid_info(bid_info)
+        assert awsmm.update_needed(asg_meta) is False
+
+        # Simulate that the running instances are spot-instances.
+        bid_info = {"type": "spot"}
+        asg_meta.set_bid_info(bid_info)
         assert awsmm.update_needed(asg_meta) is True
 
     @mock_autoscaling
@@ -220,25 +261,30 @@ class AWSMinionManagerTest(unittest.TestCase):
         """
         Tests that the AWSMinionManager schedules instance termination.
         """
-        awsmm = self.basic_setup_and_test()
-        assert len(awsmm.on_demand_kill_threads) == 0
-        asg_meta = awsmm.get_asg_metas()[0]
-        awsmm.populate_instances(asg_meta)
-        awsmm.schedule_instance_termination(asg_meta)
-        assert len(awsmm.on_demand_kill_threads) == 3
+        def _instance_termination_test_helper(minion_manager_tag, expected_kill_threads):
+            awsmm = self.basic_setup_and_test(minion_manager_tag)
+            assert len(awsmm.on_demand_kill_threads) == 0
+            asg_meta = awsmm.get_asg_metas()[0]
+            awsmm.populate_instances(asg_meta)
+            awsmm.schedule_instance_termination(asg_meta)
+            assert len(awsmm.on_demand_kill_threads) == expected_kill_threads
 
-        # For testing manually run the run_or_die method.
-        instance_type = "m3.medium"
-        zone = "us-west-2b"
-        awsmm.bid_advisor.on_demand_price_dict[instance_type] = "100"
-        awsmm.bid_advisor.spot_price_list = [{'InstanceType': instance_type,
-                                              'SpotPrice': '80',
-                                              'AvailabilityZone': zone}]
-        awsmm.instance_type = instance_type
-        dict_copy = awsmm.on_demand_kill_threads.copy()
-        for key in dict_copy.keys():
-            awsmm.run_or_die(key, asg_meta, instance_type)
-        assert len(awsmm.on_demand_kill_threads) == 0
+            instance = asg_meta.get_instances()[0]
+            # For testing manually run the run_or_die method.
+            instance_type = "m3.medium"
+            zone = "us-west-2b"
+            awsmm.bid_advisor.on_demand_price_dict[instance_type] = "100"
+            awsmm.bid_advisor.spot_price_list = [{'InstanceType': instance_type,
+                                                'SpotPrice': '80',
+                                                'AvailabilityZone': zone}]
+            awsmm.instance_type = instance_type
+            for instance in asg_meta.get_instances():
+                awsmm.run_or_die(instance, asg_meta)
+            assert len(awsmm.on_demand_kill_threads) == 0
+
+        _instance_termination_test_helper("use-spot", 3)
+        _instance_termination_test_helper("no-spot", 0)
+        _instance_termination_test_helper("abcd", 0)
 
     # PriceReporter tests
     @mock_autoscaling
