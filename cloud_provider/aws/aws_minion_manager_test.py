@@ -8,6 +8,7 @@ from cloud_provider.aws.aws_bid_advisor import AWSBidAdvisor
 from moto import mock_autoscaling, mock_sts, mock_ec2
 import boto3
 from bunch import bunchify
+import time
 
 
 class AWSMinionManagerTest(unittest.TestCase):
@@ -265,21 +266,20 @@ class AWSMinionManagerTest(unittest.TestCase):
             awsmm = self.basic_setup_and_test(minion_manager_tag)
             assert len(awsmm.on_demand_kill_threads) == 0
             asg_meta = awsmm.get_asg_metas()[0]
-            awsmm.populate_instances(asg_meta)
-            awsmm.schedule_instance_termination(asg_meta)
-            assert len(awsmm.on_demand_kill_threads) == expected_kill_threads
-
-            instance = asg_meta.get_instances()[0]
-            # For testing manually run the run_or_die method.
+            # Set instanceType since moto's instances don't have it.
             instance_type = "m3.medium"
             zone = "us-west-2b"
             awsmm.bid_advisor.on_demand_price_dict[instance_type] = "100"
             awsmm.bid_advisor.spot_price_list = [{'InstanceType': instance_type,
                                                 'SpotPrice': '80',
                                                 'AvailabilityZone': zone}]
-            awsmm.instance_type = instance_type
             for instance in asg_meta.get_instances():
-                awsmm.run_or_die(instance, asg_meta)
+                instance.InstanceType = instance_type
+            awsmm.populate_instances(asg_meta)
+            awsmm.schedule_instance_termination(asg_meta)
+            assert len(awsmm.on_demand_kill_threads) == expected_kill_threads
+
+            time.sleep(15)
             assert len(awsmm.on_demand_kill_threads) == 0
 
         _instance_termination_test_helper("use-spot", 3)

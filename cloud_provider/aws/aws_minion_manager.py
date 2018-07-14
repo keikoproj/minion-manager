@@ -321,23 +321,33 @@ class AWSMinionManager(MinionManagerBase):
         """ Terminates the given instance. """
         zones = asg_meta.asg_info.AvailabilityZones
         bid_info = self.bid_advisor.get_new_bid(zones, instance.InstanceType)
+        is_spot_instance = 'InstanceLifecycle' in instance
+        is_on_demand_instance = not is_spot_instance
         try:
             # If the instance is spot and the ASG is spot: don't kill the instance.
-            if asg_meta.get_mm_tag() == "use-spot" and 'InstanceLifecycle' in instance:
-                logger.debug("Instance %s (%s) is spot and ASG %s is spot. Ignoring termination.",
+            if asg_meta.get_mm_tag() == "use-spot" and is_spot_instance:
+                logger.info("Instance %s (%s) is spot and ASG %s is spot. Ignoring termination.",
                     asg_meta.get_instance_name(instance), instance.InstanceId, asg_meta.get_name())
-                return
+                return False
 
-            # If the instance is on-demand and the ASG is is on-demand: don't kill the instance.
-            if asg_meta.get_mm_tag() == "no-spot" and 'InstanceLifecycle' not in instance:
-                logger.debug("Instance %s (%s) is on-demand and ASG %s is on-demand. Ignoring termination.",
+            # If the instance is on-demand and the ASG is on-demand: don't kill the instance.
+            if asg_meta.get_mm_tag() == "no-spot" and is_on_demand_instance:
+                logger.info("Instance %s (%s) is on-demand and ASG %s is on-demand. Ignoring termination.",
                     asg_meta.get_instance_name(instance), instance.InstanceId, asg_meta.get_name())
-                return
+                return False
+
+            # If the instance is on-demand and ASG is spot; check if the bid recommendation. If the bid_recommendation is spot, terminate the instance.
+            if asg_meta.get_mm_tag() == "use-spot" and is_on_demand_instance:
+                if bid_info["type"] == "on-demand":
+                    logger.info("Instance %s (%s) is on-demand and ASG %s is spot. However, current recommendation is to use on-demand instances. Ignoring termination.",
+                        asg_meta.get_instance_name(instance), instance.InstanceId, asg_meta.get_name())
+                return False
 
             self._ec2_client.terminate_instances(InstanceIds=[instance.InstanceId])
             logger.info("Terminated instance %s", instance.InstanceId)
             asg_meta.remove_instance(instance.InstanceId)
             logger.info("Removed instance %s from ASG", instance.InstanceId)
+            return True
         except Exception as ex:
             logger.error("Failed in run_or_die: %s", str(ex))
         finally:
