@@ -1,5 +1,5 @@
 TEST_PATH=./
-VERSION=v0.2-dev
+VERSION=v0.2
 GIT_TAG=$(shell git rev-parse --short HEAD)
 
 ifeq (${DOCKER_PUSH},true)
