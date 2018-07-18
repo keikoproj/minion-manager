@@ -341,7 +341,7 @@ class AWSMinionManager(MinionManagerBase):
                 if bid_info["type"] == "on-demand":
                     logger.info("Instance %s (%s) is on-demand and ASG %s is spot. However, current recommendation is to use on-demand instances. Ignoring termination.",
                         asg_meta.get_instance_name(instance), instance.InstanceId, asg_meta.get_name())
-                return False
+                    return False
 
             self._ec2_client.terminate_instances(InstanceIds=[instance.InstanceId])
             logger.info("Terminated instance %s", instance.InstanceId)
