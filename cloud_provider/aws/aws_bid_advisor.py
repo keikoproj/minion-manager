@@ -123,6 +123,7 @@ class AWSBidAdvisor(object):
                         "OnDemand" in row["TermType"] and \
                         region_full_name in row["Location"] and \
                         row["Operating System"] == "Linux" and \
+                        row["Pre Installed S/W"] == "NA" and \
                         row["Tenancy"] == "Shared":
                     self.bid_advisor.on_demand_price_dict[
                         row["Instance Type"]] = row["PricePerUnit"]
