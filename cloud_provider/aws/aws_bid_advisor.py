@@ -131,12 +131,16 @@ class AWSBidAdvisor(object):
 
         def run(self):
             """ Main method of the OnDemandUpdater thread. """
+            orig_interval = self.bid_advisor.on_demand_refresh_interval
             while self.bid_advisor.terminate_thread is False:
                 try:
                     self.get_on_demand_pricing()
+                    self.bid_advisor.on_demand_refresh_interval = orig_interval
                 except Exception as ex:
-                    raise Exception("Error while getting on-demand price " +
+                    logger.info("Error while getting on-demand price " +
                                     "info: " + str(ex))
+                    logger.info("Retrying after 2 minutes")
+                    self.bid_advisor.on_demand_refresh_interval = 2 * SECONDS_PER_MINUTE
                 finally:
                     time.sleep(self.bid_advisor.on_demand_refresh_interval)
 
