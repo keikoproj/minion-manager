@@ -28,7 +28,10 @@ clean-pytest:
 		rm -rf __pycache__ coverage.xml .coverage htmlcov .pytest_cache pylint.log pytest-results.xml
 
 test: clean
-		pytest --junitxml=${TEST_PATH}/pytest-results.xml --verbose -s --color=yes $(TEST_PATH)
+		pytest --junitxml=${TEST_PATH}/pytest-results.xml -s --color=yes $(TEST_PATH)
+
+docker-test: clean
+	    docker run -v ${PWD}:/src -v ~/.aws:/root/.aws shrinand/k8s-minion-manager-test:v0.1 make test
 
 docker: clean
 		docker build -t $(IMAGE_PREFIX)k8s-minion-manager:$(IMAGE_TAG) .
