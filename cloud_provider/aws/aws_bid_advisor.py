@@ -104,10 +104,31 @@ class AWSBidAdvisor(object):
             assert bid_advisor, "BidAdvisor can't be None"
             self.bid_advisor = bid_advisor
 
+        def parse_price_row(self, row):
+            region_full_name = AWS_REGIONS[self.bid_advisor.region]
+            if HOURLY_TERM_CODE + "." + RATE_CODE in row["RateCode"] and \
+                    "OnDemand" in row["TermType"] and \
+                    "On Demand" in row["PriceDescription"] and \
+                    region_full_name in row["Location"] and \
+                    row["Operating System"] == "Linux" and \
+                    row["Pre Installed S/W"] == "NA" and \
+                    row["Tenancy"] == "Shared":
+                price = row["PricePerUnit"]
+                instance_type = row["Instance Type"]
+                old_price = self.bid_advisor.on_demand_price_dict.get(instance_type, None)
+                if old_price is None:
+                    self.bid_advisor.on_demand_price_dict[instance_type] = price
+                else:
+                    if float(price) == 0.00:
+                        logger.info("Found on-demand instance price of 0 for {}. Ignoring ...".format(instance_type))
+                    elif float(price) > float(old_price):
+                        logger.info("Found alternate price for {}. Old price {}, new price {}. Updated!".format(
+                            instance_type, old_price, price))
+                        self.bid_advisor.on_demand_price_dict[instance_type] = price
+
         @retry(wait_exponential_multiplier=1000, stop_max_attempt_number=3)
         def get_on_demand_pricing(self):
             """ Issues the AWS api for getting on-demand pricing info. """
-            region_full_name = AWS_REGIONS[self.bid_advisor.region]
             resp = requests.get(url=AWS_PRICING_URL, stream=True)
             line_iterator = resp.iter_lines()
             line = None
@@ -119,14 +140,8 @@ class AWSBidAdvisor(object):
             assert line, "Failed while iteration over on-demand price info"
             reader = csv.DictReader(line_iterator, fieldnames=line.split(','))
             for row in reader:
-                if HOURLY_TERM_CODE + "." + RATE_CODE in row["RateCode"] and \
-                        "OnDemand" in row["TermType"] and \
-                        region_full_name in row["Location"] and \
-                        row["Operating System"] == "Linux" and \
-                        row["Pre Installed S/W"] == "NA" and \
-                        row["Tenancy"] == "Shared":
-                    self.bid_advisor.on_demand_price_dict[
-                        row["Instance Type"]] = row["PricePerUnit"]
+                self.parse_price_row(row)
+
             logger.info("On-demand pricing info updated")
 
         def run(self):

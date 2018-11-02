@@ -126,3 +126,38 @@ class AWSBidAdvisorTest(unittest.TestCase):
         price_info_map = bidadv.get_current_price()
         assert price_info_map["spot"] is not None
         assert price_info_map["on-demand"] is not None
+
+    def test_ba_parse_row(self):
+        """
+        Tests that the BidAdvisor parses the rows in on-demand price information.
+        """
+        bidadv = AWSBidAdvisor(REFRESH_INTERVAL, REFRESH_INTERVAL, REGION)
+
+        od_updater = bidadv.OnDemandUpdater(bidadv)
+        row = {}
+        row['RateCode'] = "JRTCKXETXF.6YS6EN2CT7"
+        row["TermType"] = "OnDemand"
+        row["PriceDescription"] = "On Demand Linux"
+        row["Location"] = "US West (Oregon)"
+        row["Operating System"] = "Linux"
+        row["Pre Installed S/W"] = "NA"
+        row["Tenancy"] = "Shared"
+        row["PricePerUnit"] = "0.453"
+        row["Instance Type"] = "m5.4xlarge"
+
+        od_updater.parse_price_row(row)
+        assert od_updater.bid_advisor.on_demand_price_dict['m5.4xlarge'] == "0.453"
+
+        od_updater.parse_price_row(row)
+        assert od_updater.bid_advisor.on_demand_price_dict['m5.4xlarge'] == "0.453"
+
+        row["PricePerUnit"] = "0.658"
+        od_updater.parse_price_row(row)
+        assert od_updater.bid_advisor.on_demand_price_dict['m5.4xlarge'] == "0.658"
+
+        row["PricePerUnit"] = "0.00"
+        od_updater.parse_price_row(row)
+        assert od_updater.bid_advisor.on_demand_price_dict['m5.4xlarge'] == "0.658"
+
+        row['RateCode'] = "Some Random RateCode"
+        od_updater.parse_price_row(row)
