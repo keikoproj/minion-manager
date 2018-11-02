@@ -1,11 +1,13 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
+  namespace: <my-namespace>
   name: mm-sa
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
+  namespace: <my-namespace>
   name: mm-rolebinding
 subjects:
 - kind: ServiceAccount
@@ -19,6 +21,7 @@ roleRef:
 apiVersion: extensions/v1beta1
 kind: Deployment
 metadata:
+    namespace: <my-namespace>
     name: minion-manager
 spec:
     replicas: 1
