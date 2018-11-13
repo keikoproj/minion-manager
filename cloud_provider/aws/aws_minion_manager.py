@@ -5,8 +5,8 @@ import sys
 import time
 import base64
 from datetime import datetime
-from random import randint
-from threading import Timer
+#from random import randint
+from threading import Timer, Semaphore
 import boto3
 from botocore.exceptions import ClientError
 from retrying import retry
@@ -47,6 +47,8 @@ class AWSMinionManager(MinionManagerBase):
         self._refresh_interval_seconds = refresh_interval_seconds
         self._asg_metas = []
         self.instance_type = None
+        # Setting default termination to one instance at a time
+        self.terminate_percentage = 1
 
         self.on_demand_kill_threads = {}
         self.minions_ready_checker_thread = None
@@ -316,42 +318,90 @@ class AWSMinionManager(MinionManagerBase):
                     new_bid_info)
         return
 
+    def wait_for_all_running(self, asg_meta):
+        """
+        Wating for all instances in ASG to be running state.
+        """
+        asg_name = asg_meta.get_name()
+        all_done = False
+        while not all_done:
+            resp = self._ac_client.describe_auto_scaling_groups(
+                AutoScalingGroupNames=[asg_name])
+            desired_instances = resp["AutoScalingGroups"][0]["DesiredCapacity"]
+            running_instances = 0
+            for i in resp["AutoScalingGroups"][0]["Instances"]:
+                if i["HealthStatus"] == "Healthy":
+                    running_instances += 1
+
+            if running_instances == desired_instances:
+                logger.info("ASG %s has all running instances", asg_name)
+                all_done = True
+            else:
+                logger.info("Desired %s, Running %s",
+                            desired_instances, running_instances)
+                all_done = False
+                time.sleep(60)
+
     @retry(wait_exponential_multiplier=1000, stop_max_attempt_number=3)
-    def run_or_die(self, instance, asg_meta):
+    def run_or_die(self, instance, asg_meta, asg_semaphore):
         """ Terminates the given instance. """
         zones = asg_meta.asg_info.AvailabilityZones
         bid_info = self.bid_advisor.get_new_bid(zones, instance.InstanceType)
         is_spot_instance = 'InstanceLifecycle' in instance
         is_on_demand_instance = not is_spot_instance
-        try:
-            # If the instance is spot and the ASG is spot: don't kill the instance.
-            if asg_meta.get_mm_tag() == "use-spot" and is_spot_instance:
-                logger.info("Instance %s (%s) is spot and ASG %s is spot. Ignoring termination.",
-                    asg_meta.get_instance_name(instance), instance.InstanceId, asg_meta.get_name())
-                return False
-
-            # If the instance is on-demand and the ASG is on-demand: don't kill the instance.
-            if asg_meta.get_mm_tag() == "no-spot" and is_on_demand_instance:
-                logger.info("Instance %s (%s) is on-demand and ASG %s is on-demand. Ignoring termination.",
-                    asg_meta.get_instance_name(instance), instance.InstanceId, asg_meta.get_name())
-                return False
-
-            # If the instance is on-demand and ASG is spot; check if the bid recommendation. If the bid_recommendation is spot, terminate the instance.
-            if asg_meta.get_mm_tag() == "use-spot" and is_on_demand_instance:
-                if bid_info["type"] == "on-demand":
-                    logger.info("Instance %s (%s) is on-demand and ASG %s is spot. However, current recommendation is to use on-demand instances. Ignoring termination.",
-                        asg_meta.get_instance_name(instance), instance.InstanceId, asg_meta.get_name())
+        with asg_semaphore:
+            try:
+                # If the instance is spot and the ASG is spot: don't kill the instance.
+                if asg_meta.get_mm_tag() == "use-spot" and is_spot_instance:
+                    logger.info("Instance %s (%s) is spot and ASG %s is spot. Ignoring termination.",
+                                asg_meta.get_instance_name(instance), instance.InstanceId, asg_meta.get_name())
                     return False
 
-            self._ec2_client.terminate_instances(InstanceIds=[instance.InstanceId])
-            logger.info("Terminated instance %s", instance.InstanceId)
-            asg_meta.remove_instance(instance.InstanceId)
-            logger.info("Removed instance %s from ASG", instance.InstanceId)
-            return True
-        except Exception as ex:
-            logger.error("Failed in run_or_die: %s", str(ex))
-        finally:
-            self.on_demand_kill_threads.pop(instance.InstanceId, None)
+                # If the instance is on-demand and the ASG is on-demand: don't kill the instance.
+                if asg_meta.get_mm_tag() == "no-spot" and is_on_demand_instance:
+                    logger.info("Instance %s (%s) is on-demand and ASG %s is on-demand. Ignoring termination.",
+                                asg_meta.get_instance_name(instance), instance.InstanceId, asg_meta.get_name())
+                    return False
+
+                # If the instance is on-demand and ASG is spot; check if the bid recommendation. If the bid_recommendation is spot, terminate the instance.
+                if asg_meta.get_mm_tag() == "use-spot" and is_on_demand_instance:
+                    if bid_info["type"] == "on-demand":
+                        logger.info("Instance %s (%s) is on-demand and ASG %s is spot. However, current recommendation is to use on-demand instances. Ignoring termination.",
+                                    asg_meta.get_instance_name(instance), instance.InstanceId, asg_meta.get_name())
+                        return False
+
+                self._ec2_client.terminate_instances(InstanceIds=[instance.InstanceId])
+                logger.info("Terminated instance %s", instance.InstanceId)
+                asg_meta.remove_instance(instance.InstanceId)
+                logger.info("Removed instance %s from ASG %s", instance.InstanceId,asg_meta.get_name())
+                logger.info("Sleeping 180s before checking ASG")
+                time.sleep(180)
+                self.wait_for_all_running(asg_meta)
+                return True
+            except Exception as ex:
+                logger.error("Failed in run_or_die: %s", str(ex))
+            finally:
+                self.on_demand_kill_threads.pop(instance.InstanceId, None)
+
+    def set_semaphore(self, asg_meta):
+        """
+        Update no of instances can be terminated based on percentage.
+        """
+        asg_name = asg_meta.get_name()
+        asg_semaphore = 'semaphore' + asg_name
+        resp = self._ac_client.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name])
+        desired_instances = resp["AutoScalingGroups"][0]["DesiredCapacity"]
+        if self.terminate_percentage > 100:
+            self.terminate_percentage = 100
+        elif self.terminate_percentage <= 0:
+            self.terminate_percentage = 1
+        # Get no of instance can parallel be rotated
+        svalue = int(round(desired_instances * (self.terminate_percentage/100.0)))
+        if svalue == 0:
+            svalue = 1
+        logger.info("Maximum %d instance will be rotated at a time for ASG %s", svalue, asg_name)
+        asg_semaphore = Semaphore(value=svalue)
+        return asg_semaphore
 
     def schedule_instance_termination(self, asg_meta):
         """
@@ -364,6 +414,10 @@ class AWSMinionManager(MinionManagerBase):
         # If the ASG is configured to use "no-spot" or the required tag does not exist,
         # do not schedule any instance termination.
         asg_tag = asg_meta.get_mm_tag()
+
+        # Setting Semaphore per ASG base on instance count and terminate_percentage
+        asg_semaphore = self.set_semaphore(asg_meta)
+
         for instance in instances:
             # On-demand instances don't have the InstanceLifecycle field in
             # their responses. Spot instances have InstanceLifecycle=spot.
@@ -389,7 +443,7 @@ class AWSMinionManager(MinionManagerBase):
 
             # If the instance is running for hours, only the seconds in
             # the current hour need to be used.
-            #elapsed_seconds_in_hour = elapsed_seconds % \
+            # elapsed_seconds_in_hour = elapsed_seconds % \
             #    SECONDS_PER_HOUR
             # Start a thread that will check whether the instance
             # should continue running ~40 minutes later.
@@ -397,7 +451,7 @@ class AWSMinionManager(MinionManagerBase):
             # Earlier, the instances were terminated at approx. the boundary of 1 hour since
             # EC2 prices were for every hour. However, it has changed now and pricing is
             # per minute.
-            #seconds_before_check = abs((40.0 + randint(0, 19)) *
+            # seconds_before_check = abs((40.0 + randint(0, 19)) *
             #                            SECONDS_PER_MINUTE -
             #                            elapsed_seconds_in_hour)
             # TODO: Make this time configurable!
@@ -408,7 +462,7 @@ class AWSMinionManager(MinionManagerBase):
 
             logger.info("Scheduling termination thread for %s (%s) in ASG %s (%s) after %s seconds",
                         asg_meta.get_instance_name(instance), instance_id, asg_meta.get_name(), asg_tag, seconds_before_check)
-            args = [instance, asg_meta]
+            args = [instance, asg_meta, asg_semaphore]
             timed_thread = Timer(seconds_before_check, self.run_or_die,
                                     args=args)
             timed_thread.setDaemon(True)
