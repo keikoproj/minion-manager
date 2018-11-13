@@ -311,3 +311,23 @@ class AWSMinionManagerTest(unittest.TestCase):
         instance = asg_meta.get_instances()[0]
         assert len(awsmm.price_reporter.price_info[
             instance.InstanceId]) == 2
+
+    # Setting semaphore Value
+    @mock_autoscaling
+    @mock_ec2
+    @mock_sts
+    def test_set_semaphore(self):
+        """
+        Testing Semaphore value based on terminate percentage
+        """
+        def _semaphore_helper(minion_manager_tag, percentage, outcome):
+            awsmm = self.basic_setup_and_test(minion_manager_tag)
+            asg_meta = awsmm.get_asg_metas()[0]
+            awsmm.terminate_percentage = percentage
+            get_semaphore = awsmm.set_semaphore(asg_meta)
+            assert get_semaphore._Semaphore__value == outcome
+   
+        _semaphore_helper('use-spot', 1, 1)
+        _semaphore_helper('use-spot', 30, 1)
+        _semaphore_helper('use-spot', 60, 2)
+        _semaphore_helper('use-spot', 100, 3)
