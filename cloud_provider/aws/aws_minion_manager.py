@@ -5,7 +5,6 @@ import sys
 import time
 import base64
 from datetime import datetime
-#from random import randint
 from threading import Timer, Semaphore
 import boto3
 from botocore.exceptions import ClientError
