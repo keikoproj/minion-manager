@@ -38,6 +38,16 @@ class AWSMinionManagerTest(unittest.TestCase):
             LaunchConfigurationName=self.lc_name,
         )
 
+    @mock_ec2
+    def get_ami(self):
+        """
+        Getting Mock Ami
+        """
+        response = self.ec2.describe_images()
+        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        ami = response['Images'][0]['ImageId']
+        return ami
+
     @mock_autoscaling
     @mock_sts
     def create_mock_asgs(self, minion_manager_tag="use-spot"):
@@ -46,11 +56,11 @@ class AWSMinionManagerTest(unittest.TestCase):
         """
         if minion_manager_tag == "use-spot":
             response = self.autoscaling.create_launch_configuration(
-                LaunchConfigurationName=self.lc_name, ImageId='ami-f00bad',
+                LaunchConfigurationName=self.lc_name, ImageId=self.get_ami(),
                 SpotPrice="0.100", KeyName='kubernetes-some-key')
         else:
             response = self.autoscaling.create_launch_configuration(
-                LaunchConfigurationName=self.lc_name, ImageId='ami-f00bad',
+                LaunchConfigurationName=self.lc_name, ImageId=self.get_ami(),
                 KeyName='kubernetes-some-key')
         resp = bunchify(response)
         assert resp.ResponseMetadata.HTTPStatusCode == 200
