@@ -188,7 +188,7 @@ class AWSBidAdvisor(object):
                     else:
                         break
                 except Exception as ex:
-                    logger.info("Failed to get spot instance pricing info: %s", str(ex))
+                    raise Exception("Failed to get spot instance pricing info: %s", str(ex))
             with self.bid_advisor.lock:
                 self.bid_advisor.spot_price_list = spot_price_info
             logger.info("Spot instance pricing info updated")
