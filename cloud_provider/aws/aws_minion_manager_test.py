@@ -3,6 +3,8 @@
 import unittest
 import mock
 import pytest
+import subprocess
+import shlex
 from cloud_provider.aws.aws_minion_manager import AWSMinionManager
 from cloud_provider.aws.aws_bid_advisor import AWSBidAdvisor
 from moto import mock_autoscaling, mock_sts, mock_ec2
@@ -336,8 +338,24 @@ class AWSMinionManagerTest(unittest.TestCase):
             awsmm.terminate_percentage = percentage
             get_semaphore = awsmm.set_semaphore(asg_meta)
             assert get_semaphore._Semaphore__value == outcome
-   
+
         _semaphore_helper('use-spot', 1, 1)
         _semaphore_helper('use-spot', 30, 1)
         _semaphore_helper('use-spot', 60, 2)
         _semaphore_helper('use-spot', 100, 3)
+
+    @mock.patch('subprocess.check_call')
+    @mock.patch('cloud_provider.aws.aws_minion_manager.AWSMinionManager.get_name_for_instance')
+    @mock_autoscaling
+    @mock_ec2
+    @mock_sts
+    def test_cordon(self, mock_get_name_for_instance, mock_check_call):
+        awsmm = self.basic_setup_and_test()
+        mock_get_name_for_instance.return_value = "ip-of-fake-node-name"
+        awsmm.cordon_node("ip-of-fake-node")
+        mock_check_call.assert_called_with(['kubectl', 'drain', 'ip-of-fake-node-name',
+            '--ignore-daemonsets=true', '--delete-local-data=true'])
+
+        mock_check_call.side_effect = [Exception("Test"), True]
+        awsmm.cordon_node("ip-of-fake-node")
+        mock_check_call.assert_called_with(['kubectl', 'uncordon', 'ip-of-fake-node-name'])

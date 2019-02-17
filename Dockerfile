@@ -4,6 +4,7 @@ RUN pip install pipenv==2018.10.13
 WORKDIR /src
 COPY Pipfile /src/
 COPY Pipfile.lock /src/
+RUN mv binaries/kubectl-v1.12.3-linux-amd64 /usr/local/bin/kubectl
 
 # This will be used as Main Image
 FROM Base AS Main
@@ -18,4 +19,4 @@ FROM Base AS Dev
 
 RUN apk add --no-cache build-base openssl-dev libffi-dev 
 RUN pipenv install --system --deploy --dev
-#COPY . /src
+#COPY . /src    

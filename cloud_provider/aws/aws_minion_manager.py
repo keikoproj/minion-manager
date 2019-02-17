@@ -11,9 +11,12 @@ from botocore.exceptions import ClientError
 from retrying import retry
 from bunch import bunchify
 import pytz
+import shlex
+import subprocess
 from constants import SECONDS_PER_MINUTE, SECONDS_PER_HOUR
 from cloud_provider.aws.aws_bid_advisor import AWSBidAdvisor
 from cloud_provider.aws.price_info_reporter import AWSPriceReporter
+from kubernetes import client, config
 from ..base import MinionManagerBase
 from .asg_mm import AWSAutoscalinGroupMM
 
@@ -341,6 +344,34 @@ class AWSMinionManager(MinionManagerBase):
                 all_done = False
                 time.sleep(60)
 
+    def get_name_for_instance(self, instance):
+        config.load_incluster_config()
+        v1 = client.CoreV1Api()
+        for item in v1.list_node().items:
+            if instance.InstanceId in item.spec.provider_id:
+                logger.info("Instance name for %s in Kubernetes clusters is %s",
+                    instance.InstanceId, item.metadata.name)
+                return item.metadata.name
+        return None
+
+    def cordon_node(self, instance):
+        """" Runs 'kubectl drain' to actually drain the node."""
+        instance_name = self.get_name_for_instance(instance)
+        if instance_name:
+            try:
+                cmd = "kubectl drain " + instance_name + " --ignore-daemonsets=true --delete-local-data=true"
+                subprocess.check_call(shlex.split(cmd))
+                logger.info("Drained instance %s", instance_name)
+            except Exception as ex:
+                logger.info("Failed to drain node: " + str(ex) + ". Will try to uncordon")
+                cmd = "kubectl uncordon " + instance_name
+                subprocess.check_call(shlex.split(cmd))
+                logger.info("Uncordoned node " + instance_name)
+        else:
+            logger.info("Instance %s not found in Kubernetes cluster. Will not drain the instance.",
+                instance.InstanceId)
+        return True
+
     @retry(wait_exponential_multiplier=1000, stop_max_attempt_number=3)
     def run_or_die(self, instance, asg_meta, asg_semaphore):
         """ Terminates the given instance. """
@@ -368,6 +399,9 @@ class AWSMinionManager(MinionManagerBase):
                         logger.info("Instance %s (%s) is on-demand and ASG %s is spot. However, current recommendation is to use on-demand instances. Ignoring termination.",
                                     asg_meta.get_instance_name(instance), instance.InstanceId, asg_meta.get_name())
                         return False
+
+                # Cordon and drain the node first
+                self.cordon_node(instance)
 
                 self._ec2_client.terminate_instances(InstanceIds=[instance.InstanceId])
                 logger.info("Terminated instance %s", instance.InstanceId)
