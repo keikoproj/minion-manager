@@ -1,4 +1,6 @@
 TEST_PATH=./
+BUILD=docker build --target
+RUN=docker run --rm -it
 VERSION=v0.7-dev
 GIT_TAG=$(shell git rev-parse --short HEAD)
 
@@ -31,10 +33,11 @@ test: clean
 		pytest --junitxml=${TEST_PATH}/pytest-results.xml -s --color=yes $(TEST_PATH)
 
 docker-test: clean
-	    docker run -v ${PWD}:/src -v ~/.aws:/root/.aws shrinand/k8s-minion-manager-test:v0.1 make test
+		$(BUILD) dev -t $(IMAGE_PREFIX)k8s-minion-manager-test:$(IMAGE_TAG) .
+	    $(RUN) -v ${PWD}:/src -v ~/.aws:/root/.aws $(IMAGE_PREFIX)k8s-minion-manager-test:$(IMAGE_TAG) make test
 
 docker: clean
-		docker build -t $(IMAGE_PREFIX)k8s-minion-manager:$(IMAGE_TAG) .
+		$(BUILD) main -t $(IMAGE_PREFIX)k8s-minion-manager:$(IMAGE_TAG) .
 		docker tag $(IMAGE_PREFIX)k8s-minion-manager:$(IMAGE_TAG) $(IMAGE_PREFIX)k8s-minion-manager:${VERSION}
 		@if [ "$(DOCKER_PUSH)" = "true" ] ; then docker push $(IMAGE_PREFIX)k8s-minion-manager:$(IMAGE_TAG) ; fi
 
