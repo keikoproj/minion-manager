@@ -197,37 +197,37 @@ class AWSMinionManager(MinionManagerBase):
         """ Creates a launch-config for using spot-instances. """
         try:
             if hasattr(launch_config, "AssociatePublicIpAddress"):
-				response = self._ac_client.create_launch_configuration(
-					LaunchConfigurationName=new_lc_name,
-					ImageId=launch_config.ImageId,
-					KeyName=launch_config.KeyName,
-					SecurityGroups=launch_config.SecurityGroups,
-					ClassicLinkVPCSecurityGroups=launch_config.
-					ClassicLinkVPCSecurityGroups,
-					UserData=base64.b64decode(launch_config.UserData),
-					InstanceType=launch_config.InstanceType,
-					BlockDeviceMappings=launch_config.BlockDeviceMappings,
-					InstanceMonitoring=launch_config.InstanceMonitoring,
-					SpotPrice=spot_price,
-					IamInstanceProfile=launch_config.IamInstanceProfile,
-					EbsOptimized=launch_config.EbsOptimized,
-					AssociatePublicIpAddress=launch_config.
-					AssociatePublicIpAddress)
-			else:
-				response = self._ac_client.create_launch_configuration(
-					LaunchConfigurationName=new_lc_name,
-					ImageId=launch_config.ImageId,
-					KeyName=launch_config.KeyName,
-					SecurityGroups=launch_config.SecurityGroups,
-					ClassicLinkVPCSecurityGroups=launch_config.
-					ClassicLinkVPCSecurityGroups,
-					UserData=base64.b64decode(launch_config.UserData),
-					InstanceType=launch_config.InstanceType,
-					BlockDeviceMappings=launch_config.BlockDeviceMappings,
-					InstanceMonitoring=launch_config.InstanceMonitoring,
-					SpotPrice=spot_price,
-					IamInstanceProfile=launch_config.IamInstanceProfile,
-					EbsOptimized=launch_config.EbsOptimized)				
+                response = self._ac_client.create_launch_configuration(
+                    LaunchConfigurationName=new_lc_name,
+                    ImageId=launch_config.ImageId,
+                    KeyName=launch_config.KeyName,
+                    SecurityGroups=launch_config.SecurityGroups,
+                    ClassicLinkVPCSecurityGroups=launch_config.
+                    ClassicLinkVPCSecurityGroups,
+                    UserData=base64.b64decode(launch_config.UserData),
+                    InstanceType=launch_config.InstanceType,
+                    BlockDeviceMappings=launch_config.BlockDeviceMappings,
+                    InstanceMonitoring=launch_config.InstanceMonitoring,
+                    SpotPrice=spot_price,
+                    IamInstanceProfile=launch_config.IamInstanceProfile,
+                    EbsOptimized=launch_config.EbsOptimized,
+                    AssociatePublicIpAddress=launch_config.
+                    AssociatePublicIpAddress)
+            else:
+                response = self._ac_client.create_launch_configuration(
+                    LaunchConfigurationName=new_lc_name,
+                    ImageId=launch_config.ImageId,
+                    KeyName=launch_config.KeyName,
+                    SecurityGroups=launch_config.SecurityGroups,
+                    ClassicLinkVPCSecurityGroups=launch_config.
+                    ClassicLinkVPCSecurityGroups,
+                    UserData=base64.b64decode(launch_config.UserData),
+                    InstanceType=launch_config.InstanceType,
+                    BlockDeviceMappings=launch_config.BlockDeviceMappings,
+                    InstanceMonitoring=launch_config.InstanceMonitoring,
+                    SpotPrice=spot_price,
+                    IamInstanceProfile=launch_config.IamInstanceProfile,
+                    EbsOptimized=launch_config.EbsOptimized)				
             assert response is not None, \
                 "Failed to create launch-config {}".format(new_lc_name)
             assert response["HTTPStatusCode"] == 200, \
@@ -246,37 +246,37 @@ class AWSMinionManager(MinionManagerBase):
         """ Creates a launch-config for using on-demand instances. """
         try:
             if hasattr(launch_config, "AssociatePublicIpAddress"):
-				response = self._ac_client.create_launch_configuration(
-					LaunchConfigurationName=new_lc_name,
-					ImageId=launch_config.ImageId,
-					KeyName=launch_config.KeyName,
-					SecurityGroups=launch_config.SecurityGroups,
-					ClassicLinkVPCSecurityGroups=launch_config.
-					ClassicLinkVPCSecurityGroups,
-					UserData=base64.b64decode(launch_config.UserData),
-					InstanceType=launch_config.InstanceType,
-					BlockDeviceMappings=launch_config.BlockDeviceMappings,
-					InstanceMonitoring=launch_config.InstanceMonitoring,
-					SpotPrice=spot_price,
-					IamInstanceProfile=launch_config.IamInstanceProfile,
-					EbsOptimized=launch_config.EbsOptimized,
-					AssociatePublicIpAddress=launch_config.
-					AssociatePublicIpAddress)
-			else:
-				response = self._ac_client.create_launch_configuration(
-					LaunchConfigurationName=new_lc_name,
-					ImageId=launch_config.ImageId,
-					KeyName=launch_config.KeyName,
-					SecurityGroups=launch_config.SecurityGroups,
-					ClassicLinkVPCSecurityGroups=launch_config.
-					ClassicLinkVPCSecurityGroups,
-					UserData=base64.b64decode(launch_config.UserData),
-					InstanceType=launch_config.InstanceType,
-					BlockDeviceMappings=launch_config.BlockDeviceMappings,
-					InstanceMonitoring=launch_config.InstanceMonitoring,
-					SpotPrice=spot_price,
-					IamInstanceProfile=launch_config.IamInstanceProfile,
-					EbsOptimized=launch_config.EbsOptimized)
+                response = self._ac_client.create_launch_configuration(
+                    LaunchConfigurationName=new_lc_name,
+                    ImageId=launch_config.ImageId,
+                    KeyName=launch_config.KeyName,
+                    SecurityGroups=launch_config.SecurityGroups,
+                    ClassicLinkVPCSecurityGroups=launch_config.
+                    ClassicLinkVPCSecurityGroups,
+                    UserData=base64.b64decode(launch_config.UserData),
+                    InstanceType=launch_config.InstanceType,
+                    BlockDeviceMappings=launch_config.BlockDeviceMappings,
+                    InstanceMonitoring=launch_config.InstanceMonitoring,
+                    SpotPrice=spot_price,
+                    IamInstanceProfile=launch_config.IamInstanceProfile,
+                    EbsOptimized=launch_config.EbsOptimized,
+                    AssociatePublicIpAddress=launch_config.
+                    AssociatePublicIpAddress)
+            else:
+                response = self._ac_client.create_launch_configuration(
+                    LaunchConfigurationName=new_lc_name,
+                    ImageId=launch_config.ImageId,
+                    KeyName=launch_config.KeyName,
+                    SecurityGroups=launch_config.SecurityGroups,
+                    ClassicLinkVPCSecurityGroups=launch_config.
+                    ClassicLinkVPCSecurityGroups,
+                    UserData=base64.b64decode(launch_config.UserData),
+                    InstanceType=launch_config.InstanceType,
+                    BlockDeviceMappings=launch_config.BlockDeviceMappings,
+                    InstanceMonitoring=launch_config.InstanceMonitoring,
+                    SpotPrice=spot_price,
+                    IamInstanceProfile=launch_config.IamInstanceProfile,
+                    EbsOptimized=launch_config.EbsOptimized)
             assert response is not None, \
                 "Failed to create launch-config {}".format(new_lc_name)
             assert response["HTTPStatusCode"] == 200, \
