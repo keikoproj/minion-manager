@@ -25,11 +25,12 @@ The IAM role of the node that runs the minion-manager should have the following 
     "Sid": "kopsK8sMinionManager",
     "Effect": "Allow",
     "Action": [
+	"ec2:DescribeInstances",
 	"ec2:TerminateInstances",
 	"ec2:DescribeSpotPriceHistory",
 	"autoscaling:CreateLaunchConfiguration",
 	"autoscaling:DeleteLaunchConfiguration",
-	"autoscaling:DescribeLaunchConfiguration",
+	"autoscaling:DescribeLaunchConfigurations",
         "autoscaling:DescribeAutoScalingGroups",
         "autoscaling:TerminateInstanceInAutoScalingGroup",
         "autoscaling:UpdateAutoScalingGroup",

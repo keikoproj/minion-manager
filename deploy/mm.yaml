@@ -38,7 +38,7 @@ spec:
             serviceAccountName: mm-sa
             containers:
               - name: minion-manager
-                image: argoproj/k8s-minion-manager:v0.3
+                image: argoproj/k8s-minion-manager:v0.6
                 command: ["python", "./minion_manager.py", "--region", "us-west-2", "--cluster-name", "<my-cluster-name>"]
                 resources:
                     requests:
