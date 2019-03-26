@@ -673,7 +673,7 @@ class AWSMinionManager(MinionManagerBase):
         for activity in activities:
             if activity.Progress == 100:
                 continue
-            if len([message for message in INSUFFICIENT_CAPACITY_MESSAGE if message in activity.StatusMessage]) == len(INSUFFICIENT_CAPACITY_MESSAGE):
+            if 'StatusMessage' in activity and len([message for message in INSUFFICIENT_CAPACITY_MESSAGE if message in activity.StatusMessage]) == len(INSUFFICIENT_CAPACITY_MESSAGE):
                 return True
             
         return False

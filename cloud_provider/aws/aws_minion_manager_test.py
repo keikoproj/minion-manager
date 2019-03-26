@@ -22,6 +22,7 @@ class AWSMinionManagerTest(unittest.TestCase):
     cluster_name_id = cluster_name + "-" + cluster_id
     asg_name = cluster_name_id + "-asg"
     lc_name = cluster_name_id + "-lc"
+    insufficient_resource_message = "We currently do not have sufficient p2.xlarge capacity in the Availability Zone you requested (us-west-2b). Our system will be working on provisioning additional capacity. You can currently get p2.xlarge capacity by not specifying an Availability Zone in your request or choosing us-west-2c, us-west-2a."
 
     session = boto3.Session(region_name="us-west-2")
     autoscaling = session.client("autoscaling")
@@ -359,3 +360,48 @@ class AWSMinionManagerTest(unittest.TestCase):
         mock_check_call.side_effect = [Exception("Test"), True]
         awsmm.cordon_node("ip-of-fake-node")
         mock_check_call.assert_called_with(['kubectl', 'uncordon', 'ip-of-fake-node-name'])
+
+    @mock.patch('cloud_provider.aws.aws_minion_manager.AWSMinionManager.describe_asg_with_retries')
+    @mock_autoscaling
+    @mock_ec2
+    @mock_sts
+    def test_asg_activities_all_done(self, mock_get_name_for_instance):
+        mock_get_name_for_instance.return_value = bunchify({'Activities': [{'StatusMessage': 'dummy ok message', 'Progress': 100}, {'StatusMessage': 'dummy ok message2', 'Progress': 100}]})
+        
+        awsmm = self.basic_setup_and_test()
+        asg_meta = awsmm.get_asg_metas()[0]
+        assert not awsmm.check_insufficient_capacity(asg_meta)
+
+
+    @mock.patch('cloud_provider.aws.aws_minion_manager.AWSMinionManager.describe_asg_with_retries')
+    @mock_autoscaling
+    @mock_ec2
+    @mock_sts
+    def test_asg_activity_without_statusMessage(self, mock_get_name_for_instance):
+        mock_get_name_for_instance.return_value = bunchify({'Activities': [{'Progress': 20}, {'StatusMessage': 'dummy ok message2', 'Progress': 100}]})
+    
+        awsmm = self.basic_setup_and_test()
+        asg_meta = awsmm.get_asg_metas()[0]
+        assert not awsmm.check_insufficient_capacity(asg_meta)
+
+    @mock.patch('cloud_provider.aws.aws_minion_manager.AWSMinionManager.describe_asg_with_retries')
+    @mock_autoscaling
+    @mock_ec2
+    @mock_sts
+    def test_asg_done_activity_with_insufficient_resource(self, mock_get_name_for_instance):
+        mock_get_name_for_instance.return_value = bunchify({'Activities': [{'StatusMessage': self.insufficient_resource_message, 'Progress': 100}]})
+    
+        awsmm = self.basic_setup_and_test()
+        asg_meta = awsmm.get_asg_metas()[0]
+        assert not awsmm.check_insufficient_capacity(asg_meta)
+
+    @mock.patch('cloud_provider.aws.aws_minion_manager.AWSMinionManager.describe_asg_with_retries')
+    @mock_autoscaling
+    @mock_ec2
+    @mock_sts
+    def test_asg_activity_with_insufficient_resource(self, mock_get_name_for_instance):
+        mock_get_name_for_instance.return_value = bunchify({'Activities': [{'StatusMessage': self.insufficient_resource_message, 'Progress': 20}]})
+    
+        awsmm = self.basic_setup_and_test()
+        asg_meta = awsmm.get_asg_metas()[0]
+        assert awsmm.check_insufficient_capacity(asg_meta)
