@@ -361,7 +361,7 @@ class AWSMinionManagerTest(unittest.TestCase):
         awsmm.cordon_node("ip-of-fake-node")
         mock_check_call.assert_called_with(['kubectl', 'uncordon', 'ip-of-fake-node-name'])
 
-    @mock.patch('cloud_provider.aws.aws_minion_manager.AWSMinionManager.describe_asg_with_retries')
+    @mock.patch('cloud_provider.aws.aws_minion_manager.AWSMinionManager.describe_asg_activities_with_retries')
     @mock_autoscaling
     @mock_ec2
     @mock_sts
@@ -373,7 +373,7 @@ class AWSMinionManagerTest(unittest.TestCase):
         assert not awsmm.check_insufficient_capacity(asg_meta)
 
 
-    @mock.patch('cloud_provider.aws.aws_minion_manager.AWSMinionManager.describe_asg_with_retries')
+    @mock.patch('cloud_provider.aws.aws_minion_manager.AWSMinionManager.describe_asg_activities_with_retries')
     @mock_autoscaling
     @mock_ec2
     @mock_sts
@@ -384,7 +384,7 @@ class AWSMinionManagerTest(unittest.TestCase):
         asg_meta = awsmm.get_asg_metas()[0]
         assert not awsmm.check_insufficient_capacity(asg_meta)
 
-    @mock.patch('cloud_provider.aws.aws_minion_manager.AWSMinionManager.describe_asg_with_retries')
+    @mock.patch('cloud_provider.aws.aws_minion_manager.AWSMinionManager.describe_asg_activities_with_retries')
     @mock_autoscaling
     @mock_ec2
     @mock_sts
@@ -395,7 +395,7 @@ class AWSMinionManagerTest(unittest.TestCase):
         asg_meta = awsmm.get_asg_metas()[0]
         assert not awsmm.check_insufficient_capacity(asg_meta)
 
-    @mock.patch('cloud_provider.aws.aws_minion_manager.AWSMinionManager.describe_asg_with_retries')
+    @mock.patch('cloud_provider.aws.aws_minion_manager.AWSMinionManager.describe_asg_activities_with_retries')
     @mock_autoscaling
     @mock_ec2
     @mock_sts

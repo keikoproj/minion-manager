@@ -666,7 +666,7 @@ class AWSMinionManager(MinionManagerBase):
                                            'capacity in the Availability Zone you requested']
         
         asg_info = scaling_group.get_asg_info()
-        response = AWSMinionManager.describe_asg_with_retries(
+        response = AWSMinionManager.describe_asg_activities_with_retries(
             self._ac_client, asg_info.AutoScalingGroupName)
         activities = response.Activities
         
