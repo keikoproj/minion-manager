@@ -260,7 +260,7 @@ class AWSBidAdvisor(object):
         threshold = bid_options["spot_to_on_demand_threshold"]
 
         if spot_price <= threshold * on_demand_price:
-            bid_info["price"] = str(on_demand_price)
+            bid_info["price"] = str(spot_price)
             bid_info["type"] = "spot"
         else:
             # On-demand nodes do not require price information.
