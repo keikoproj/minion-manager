@@ -31,9 +31,10 @@ The IAM role of the node that runs the minion-manager should have the following 
 	"autoscaling:CreateLaunchConfiguration",
 	"autoscaling:DeleteLaunchConfiguration",
 	"autoscaling:DescribeLaunchConfigurations",
-        "autoscaling:DescribeAutoScalingGroups",
-        "autoscaling:TerminateInstanceInAutoScalingGroup",
-        "autoscaling:UpdateAutoScalingGroup",
+    "autoscaling:DescribeAutoScalingGroups",
+    "autoscaling:TerminateInstanceInAutoScalingGroup",
+    "autoscaling:UpdateAutoScalingGroup",
+    "autoscaling:DescribeScalingActivities",
 	"iam:PassRole"
     ],
     "Resource": [
