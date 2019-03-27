@@ -400,7 +400,7 @@ class AWSMinionManager(MinionManagerBase):
         instance_name = self.get_name_for_instance(instance)
         if instance_name:
             try:
-                cmd = "kubectl drain " + instance_name + " --ignore-daemonsets=true --delete-local-data=true"
+                cmd = "kubectl drain " + instance_name + " --ignore-daemonsets=true --delete-local-data=true --force --grace-period=-1"
                 subprocess.check_call(shlex.split(cmd))
                 logger.info("Drained instance %s", instance_name)
             except Exception as ex:
