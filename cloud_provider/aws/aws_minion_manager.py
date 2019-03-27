@@ -74,6 +74,16 @@ class AWSMinionManager(MinionManagerBase):
 
     @staticmethod
     @retry(wait_exponential_multiplier=1000, stop_max_attempt_number=3)
+    def describe_asg_activities_with_retries(ac_client, asg):
+        """
+        AWS describe_auto_scaling_groups with retries.
+        """
+        response = ac_client.describe_scaling_activities(
+            AutoScalingGroupName=asg)
+        return bunchify(response)
+
+    @staticmethod
+    @retry(wait_exponential_multiplier=1000, stop_max_attempt_number=3)
     def get_instances_with_retries(ec2_client, instance_ids):
         """
         AWS describe_instances with retries.
@@ -578,9 +588,7 @@ class AWSMinionManager(MinionManagerBase):
                     # 3.
                     bid_info = asg_meta.get_bid_info()
                     if asg_meta.get_mm_tag() == "no-spot" and bid_info["type"] == "spot":
-                        new_bid_info = {}
-                        new_bid_info["type"] = "on-demand"
-                        new_bid_info["price"] = ""
+                        new_bid_info = self.create_on_demand_bid_info()
                         logger.info("ASG %s configured with no-spot but currently using spot. Updating...", asg_meta.get_name())
                         self.update_scaling_group(asg_meta, new_bid_info)
                         continue
@@ -588,6 +596,13 @@ class AWSMinionManager(MinionManagerBase):
                     new_bid_info = self.bid_advisor.get_new_bid(
                         zones=asg_meta.asg_info.AvailabilityZones,
                         instance_type=asg_meta.lc_info.InstanceType)
+                    
+                    # Change ASG to on-demand if insufficient capacity
+                    if self.check_insufficient_capacity(asg_meta):
+                        new_bid_info = self.create_on_demand_bid_info()
+                        logger.info("ASG %s spot instance have not sufficient resource. Updating to on-demand...", asg_meta.get_name())
+                        self.update_scaling_group(asg_meta, new_bid_info)
+                        continue
 
                     # Update ASGs iff new bid is different from current bid.
                     if self.are_bids_equal(asg_meta.bid_info, new_bid_info):
@@ -611,6 +626,12 @@ class AWSMinionManager(MinionManagerBase):
                     self.populate_current_config()
                 except Exception as ex:
                     raise Exception("Failed to discover/populate current ASG info: " + str(ex))
+
+    def create_on_demand_bid_info(self):
+        new_bid_info = {}
+        new_bid_info["type"] = "on-demand"
+        new_bid_info["price"] = ""
+        return new_bid_info
 
     def run(self):
         """Entrypoint for the AWS specific minion-manager."""
@@ -668,7 +689,28 @@ class AWSMinionManager(MinionManagerBase):
                 # Wait for sometime before checking again.
                 time.sleep(60)
         return False
-
+    
+    def check_insufficient_capacity(self, scaling_group):
+        """
+        Checks whether not completed ASG activities got not have sufficient capacity error message.
+        """
+        # This error message from https://docs.aws.amazon.com/autoscaling/ec2/userguide/ts-as-capacity.html#ts-as-capacity-1
+        INSUFFICIENT_CAPACITY_MESSAGE = ['We currently do not have sufficient',
+                                           'capacity in the Availability Zone you requested']
+        
+        asg_info = scaling_group.get_asg_info()
+        response = AWSMinionManager.describe_asg_activities_with_retries(
+            self._ac_client, asg_info.AutoScalingGroupName)
+        activities = response.Activities
+        
+        for activity in activities:
+            if activity.Progress == 100:
+                continue
+            if 'StatusMessage' in activity and len([message for message in INSUFFICIENT_CAPACITY_MESSAGE if message in activity.StatusMessage]) == len(INSUFFICIENT_CAPACITY_MESSAGE):
+                return True
+            
+        return False
+        
     def get_asg_metas(self):
         """ Return all asg_meta """
         return self._asg_metas
