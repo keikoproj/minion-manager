@@ -267,7 +267,6 @@ class AWSMinionManager(MinionManagerBase):
                     InstanceType=launch_config.InstanceType,
                     BlockDeviceMappings=launch_config.BlockDeviceMappings,
                     InstanceMonitoring=launch_config.InstanceMonitoring,
-                    SpotPrice=spot_price,
                     IamInstanceProfile=launch_config.IamInstanceProfile,
                     EbsOptimized=launch_config.EbsOptimized,
                     AssociatePublicIpAddress=launch_config.
@@ -284,7 +283,6 @@ class AWSMinionManager(MinionManagerBase):
                     InstanceType=launch_config.InstanceType,
                     BlockDeviceMappings=launch_config.BlockDeviceMappings,
                     InstanceMonitoring=launch_config.InstanceMonitoring,
-                    SpotPrice=spot_price,
                     IamInstanceProfile=launch_config.IamInstanceProfile,
                     EbsOptimized=launch_config.EbsOptimized)
             assert response is not None, \
