@@ -1,7 +1,7 @@
 TEST_PATH=./
 BUILD=docker build --target
 RUN=docker run --rm -it
-VERSION=v0.7
+VERSION=v0.8-dev
 GIT_TAG=$(shell git rev-parse --short HEAD)
 
 ifeq (${DOCKER_PUSH},true)
