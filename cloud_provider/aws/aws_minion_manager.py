@@ -18,7 +18,7 @@ from cloud_provider.aws.aws_bid_advisor import AWSBidAdvisor
 from cloud_provider.aws.price_info_reporter import AWSPriceReporter
 from kubernetes import client, config
 from ..base import MinionManagerBase
-from .asg_mm import AWSAutoscalinGroupMM
+from .asg_mm import AWSAutoscalinGroupMM, MINION_MANAGER_LABEL
 
 logger = logging.getLogger("aws_minion_manager")
 logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s " +
@@ -111,7 +111,7 @@ class AWSMinionManager(MinionManagerBase):
             if not is_candidate:
                 continue
             for tag in r['Tags']:
-                if tag['Key'] == 'k8s-minion-manager':
+                if tag['Key'] == MINION_MANAGER_LABEL:
                     response["AutoScalingGroups"].append(r)
                     break
         return bunchify(response)
@@ -123,7 +123,8 @@ class AWSMinionManager(MinionManagerBase):
             asg_mm = AWSAutoscalinGroupMM()
             asg_mm.set_asg_info(asg)
             self._asg_metas.append(asg_mm)
-            logger.info("Adding asg %s (%s)", asg_mm.get_name(), asg_mm.get_mm_tag())
+            logger.info("Adding asg %s (%s). Can manager terminate instance: %s", asg_mm.get_name(),
+                        asg_mm.get_mm_tag(), "no " if asg_mm.not_terminate_instance() else "yes")
 
     def populate_current_config(self):
         """
@@ -483,6 +484,12 @@ class AWSMinionManager(MinionManagerBase):
         """
         instances = asg_meta.get_instances()
         if len(instances) == 0:
+            return
+        
+        """
+        Check is ASG set not to terminate instance
+        """
+        if asg_meta.not_terminate_instance():
             return
 
         # If the ASG is configured to use "no-spot" or the required tag does not exist,
