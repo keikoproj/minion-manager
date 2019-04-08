@@ -23,6 +23,7 @@ class AWSMinionManagerTest(unittest.TestCase):
     asg_name = cluster_name_id + "-asg"
     lc_name = cluster_name_id + "-lc"
     insufficient_resource_message = "We currently do not have sufficient p2.xlarge capacity in the Availability Zone you requested (us-west-2b). Our system will be working on provisioning additional capacity. You can currently get p2.xlarge capacity by not specifying an Availability Zone in your request or choosing us-west-2c, us-west-2a."
+    asg_waiting_for_spot_instance = 'Placed Spot instance request: sir-3j8r1t2p. Waiting for instance(s)'
 
     session = boto3.Session(region_name="us-west-2")
     autoscaling = session.client("autoscaling")
@@ -405,3 +406,42 @@ class AWSMinionManagerTest(unittest.TestCase):
         awsmm = self.basic_setup_and_test()
         asg_meta = awsmm.get_asg_metas()[0]
         assert awsmm.check_insufficient_capacity(asg_meta)
+        
+    @mock.patch('cloud_provider.aws.aws_minion_manager.AWSMinionManager.describe_spot_request_with_retries')
+    @mock.patch('cloud_provider.aws.aws_minion_manager.AWSMinionManager.describe_asg_activities_with_retries')
+    @mock_autoscaling
+    @mock_ec2
+    @mock_sts
+    def test_spot_request_capacity_oversubscribed(self, mock_get_name_for_instance, mock_spot_request):
+        mock_get_name_for_instance.return_value = bunchify({'Activities': [{'StatusMessage': self.asg_waiting_for_spot_instance, 'Progress': 20}]})
+        mock_spot_request.return_value = bunchify({'SpotInstanceRequests': [{'Status': {'Code': 'capacity-oversubscribed'}}]})
+    
+        awsmm = self.basic_setup_and_test()
+        asg_meta = awsmm.get_asg_metas()[0]
+        assert awsmm.check_insufficient_capacity(asg_meta)
+
+    @mock.patch('cloud_provider.aws.aws_minion_manager.AWSMinionManager.describe_spot_request_with_retries')
+    @mock.patch('cloud_provider.aws.aws_minion_manager.AWSMinionManager.describe_asg_activities_with_retries')
+    @mock_autoscaling
+    @mock_ec2
+    @mock_sts
+    def test_spot_request_capacity_not_available(self, mock_get_name_for_instance, mock_spot_request):
+        mock_get_name_for_instance.return_value = bunchify({'Activities': [{'StatusMessage': self.asg_waiting_for_spot_instance, 'Progress': 20}]})
+        mock_spot_request.return_value = bunchify({'SpotInstanceRequests': [{'Status': {'Code': 'capacity-not-available'}}]})
+        
+        awsmm = self.basic_setup_and_test()
+        asg_meta = awsmm.get_asg_metas()[0]
+        assert awsmm.check_insufficient_capacity(asg_meta)
+
+    @mock.patch('cloud_provider.aws.aws_minion_manager.AWSMinionManager.describe_spot_request_with_retries')
+    @mock.patch('cloud_provider.aws.aws_minion_manager.AWSMinionManager.describe_asg_activities_with_retries')
+    @mock_autoscaling
+    @mock_ec2
+    @mock_sts
+    def test_spot_request_other_message(self, mock_get_name_for_instance, mock_spot_request):
+        mock_get_name_for_instance.return_value = bunchify({'Activities': [{'StatusMessage': self.asg_waiting_for_spot_instance, 'Progress': 20}]})
+        mock_spot_request.return_value = bunchify({'SpotInstanceRequests': [{'Status': {'Code': 'other-message'}}]})
+    
+        awsmm = self.basic_setup_and_test()
+        asg_meta = awsmm.get_asg_metas()[0]
+        assert not awsmm.check_insufficient_capacity(asg_meta)
