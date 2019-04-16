@@ -1,7 +1,0 @@
-#!/bin/bash
-
-MM_REGISTRY_NAMESPACE=${MM_REGISTRY_NAMESPACE:-oss}
-MM_REGISTRY_URL=${REGSITRY_URL:-get.applatix.io}
-MM_VERSION=${MM_VERSION:-latest}
-
-docker build -t ${MM_REGISTRY_URL}/${MM_REGISTRY_NAMESPACE}/minion-manager:${MM_VERSION} .
