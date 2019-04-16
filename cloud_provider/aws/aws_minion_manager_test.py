@@ -355,7 +355,7 @@ class AWSMinionManagerTest(unittest.TestCase):
         mock_get_name_for_instance.return_value = "ip-of-fake-node-name"
         awsmm.cordon_node("ip-of-fake-node")
         mock_check_call.assert_called_with(['kubectl', 'drain', 'ip-of-fake-node-name',
-            '--ignore-daemonsets=true', '--delete-local-data=true'])
+            '--ignore-daemonsets=true', '--delete-local-data=true', '--force', '--grace-period=-1'])
 
         mock_check_call.side_effect = [Exception("Test"), True]
         awsmm.cordon_node("ip-of-fake-node")
