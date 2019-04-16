@@ -88,6 +88,6 @@ This will be a multi-step process:
 * After the above, remove the "k8s-minion-manager" tag.
 * Delete the "k8s-minion-manager" deployment.
 
-** How do I: **
+**How do I:**
 
  _1. Run unit tests: Ensure that your AWS cli is set up correctly. Then simply run `make docker-test`
