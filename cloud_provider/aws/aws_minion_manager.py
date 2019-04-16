@@ -1,6 +1,7 @@
 """Minion Manager implementation for AWS."""
 
 import logging
+import re
 import sys
 import time
 import base64
