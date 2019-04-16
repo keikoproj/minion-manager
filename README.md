@@ -87,7 +87,3 @@ This will be a multi-step process:
 * Wait for the minion-manager to react to this and switch the instances to on-demand. Look at the AWS console for verifying that all instances are on-demand.
 * After the above, remove the "k8s-minion-manager" tag.
 * Delete the "k8s-minion-manager" deployment.
-
-** How do I ... **
-
-_1. Run unit tests: Ensure that your AWS cli is set up correctly. Then simply run `make docker-test`
