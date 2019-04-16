@@ -116,6 +116,13 @@ class AWSMinionManager(MinionManagerBase):
                     break
         return bunchify(response)
 
+    @staticmethod
+    @retry(wait_exponential_multiplier=1000, stop_max_attempt_number=3)
+    def describe_spot_request_with_retries(ec2_client, request_ids):
+        response = ec2_client.describe_spot_instance_requests(
+            SpotInstanceRequestIds=request_ids)
+        return bunchify(response)
+
     def discover_asgs(self):
         """ Query AWS and get metadata about all required ASGs. """
         response = AWSMinionManager.get_asgs_with_tags(self._cluster_name, self._ac_client)
@@ -703,6 +710,8 @@ class AWSMinionManager(MinionManagerBase):
         INSUFFICIENT_CAPACITY_MESSAGE = ['We currently do not have sufficient',
                                            'capacity in the Availability Zone you requested']
         
+        WAITING_SPOT_INSTANCE_MESSAGE = ['Placed Spot instance request:', 'Waiting for instance(s)']
+        
         asg_info = scaling_group.get_asg_info()
         response = AWSMinionManager.describe_asg_activities_with_retries(
             self._ac_client, asg_info.AutoScalingGroupName)
@@ -714,6 +723,27 @@ class AWSMinionManager(MinionManagerBase):
             if 'StatusMessage' in activity and len([message for message in INSUFFICIENT_CAPACITY_MESSAGE if message in activity.StatusMessage]) == len(INSUFFICIENT_CAPACITY_MESSAGE):
                 return True
             
+            # Check spot request status code
+            if 'StatusMessage' in activity and len([message for message in WAITING_SPOT_INSTANCE_MESSAGE if message in activity.StatusMessage]) == len(WAITING_SPOT_INSTANCE_MESSAGE):
+                spot_req_regex = re.compile('Placed Spot instance request: (?P<spot_req_id>sir-[a-zA-Z0-9]+)\. Waiting for instance\(s\)')
+                spot_req_re_result = spot_req_regex.search(activity.StatusMessage)
+                if spot_req_re_result is not None and \
+                        self.check_spot_request_insufficient_capacity(spot_req_re_result.group('spot_req_id')):
+                    return True
+            
+        return False
+    
+    def check_spot_request_insufficient_capacity(self, spot_request):
+        OVERSUBSCRIBED_MESSAGE = 'capacity-oversubscribed'
+        CAPACITY_NOT_AVAILABLE = 'capacity-not-available'
+        
+        response = AWSMinionManager.describe_spot_request_with_retries(self._ec2_client, [spot_request])
+        requests = response.SpotInstanceRequests
+        for request in requests:
+            if 'Status' in request and 'Code' in request.Status:
+                if OVERSUBSCRIBED_MESSAGE == request.Status.Code or CAPACITY_NOT_AVAILABLE == request.Status.Code:
+                    return True
+                
         return False
         
     def get_asg_metas(self):
