@@ -90,4 +90,4 @@ This will be a multi-step process:
 
 **How do I:**
 
- _1. Run unit tests: Ensure that your AWS cli is set up correctly. Then simply run `make docker-test`
+ _1. Run unit tests: Ensure that your AWS cli is set up correctly. Then simply run `make docker-test`_
