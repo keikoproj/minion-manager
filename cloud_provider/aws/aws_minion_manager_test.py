@@ -53,7 +53,7 @@ class AWSMinionManagerTest(unittest.TestCase):
 
     @mock_autoscaling
     @mock_sts
-    def create_mock_asgs(self, minion_manager_tag="use-spot"):
+    def create_mock_asgs(self, minion_manager_tag="use-spot", not_terminate=False):
         """
         Creates mocked AWS resources.
         """
@@ -67,30 +67,36 @@ class AWSMinionManagerTest(unittest.TestCase):
                 KeyName='kubernetes-some-key')
         resp = bunchify(response)
         assert resp.ResponseMetadata.HTTPStatusCode == 200
+        
+        asg_tags = [{'ResourceId': self.cluster_name_id,
+                     'Key': 'KubernetesCluster', 'Value': self.cluster_name_id},
+                    {'ResourceId': self.cluster_name_id,
+                     'Key': 'k8s-minion-manager', 'Value': minion_manager_tag},
+                    {'ResourceId': self.cluster_name_id,
+                     'PropagateAtLaunch': True,
+                     'Key': 'Name', 'Value': "my-instance-name"},
+                    ]
+        
+        if not_terminate:
+            asg_tags.append({'ResourceId': self.cluster_name_id,
+                             'Key': 'k8s-minion-manager/not-terminate', 'Value': 'True'})
 
         response = self.autoscaling.create_auto_scaling_group(
             AutoScalingGroupName=self.asg_name,
             LaunchConfigurationName=self.lc_name, MinSize=3, MaxSize=3,
             DesiredCapacity=3,
             AvailabilityZones=['us-west-2a'],
-            Tags=[{'ResourceId': self.cluster_name_id,
-                   'Key': 'KubernetesCluster', 'Value': self.cluster_name_id},
-                  {'ResourceId': self.cluster_name_id,
-                   'Key': 'k8s-minion-manager', 'Value': minion_manager_tag},
-                  {'ResourceId': self.cluster_name_id,
-                   'PropagateAtLaunch': True,
-                   'Key': 'Name', 'Value': "my-instance-name"},
-                  ]
+            Tags=asg_tags
         )
         resp = bunchify(response)
         assert resp.ResponseMetadata.HTTPStatusCode == 200
 
-    def basic_setup_and_test(self, minion_manager_tag="use-spot"):
+    def basic_setup_and_test(self, minion_manager_tag="use-spot", not_terminate=False):
         """
         Creates the mock setup for tests, creates the aws_mm object and does
         some basic sanity tests before returning it.
         """
-        self.create_mock_asgs(minion_manager_tag)
+        self.create_mock_asgs(minion_manager_tag, not_terminate)
         aws_mm = AWSMinionManager(self.cluster_name_id, "us-west-2", refresh_interval_seconds=50)
         assert len(aws_mm.get_asg_metas()) == 0, \
             "ASG Metadata already populated?"
@@ -298,6 +304,37 @@ class AWSMinionManagerTest(unittest.TestCase):
         _instance_termination_test_helper("use-spot", 3)
         _instance_termination_test_helper("no-spot", 0)
         _instance_termination_test_helper("abcd", 0)
+        
+    @mock_autoscaling
+    @mock_ec2
+    @mock_sts
+    def test_instance_not_termination(self):
+        """
+        Tests that the AWSMinionManager won't terminate instance with not-terminate tag.
+        """
+        def _instance_termination_test_helper(minion_manager_tag, expected_kill_threads):
+            awsmm = self.basic_setup_and_test(minion_manager_tag, True)
+            # Inject `k8s-minion-manager/not-terminate` to awsmm
+            
+            assert len(awsmm.on_demand_kill_threads) == 0
+            asg_meta = awsmm.get_asg_metas()[0]
+            # Set instanceType since moto's instances don't have it.
+            instance_type = "m3.medium"
+            zone = "us-west-2b"
+            awsmm.bid_advisor.on_demand_price_dict[instance_type] = "100"
+            awsmm.bid_advisor.spot_price_list = [{'InstanceType': instance_type,
+                                                  'SpotPrice': '80',
+                                                  'AvailabilityZone': zone}]
+            for instance in asg_meta.get_instances():
+                instance.InstanceType = instance_type
+            awsmm.populate_instances(asg_meta)
+            awsmm.schedule_instance_termination(asg_meta)
+            assert len(awsmm.on_demand_kill_threads) == expected_kill_threads
+        
+            time.sleep(15)
+            assert len(awsmm.on_demand_kill_threads) == 0
+    
+        _instance_termination_test_helper("use-spot", 0)
 
     # PriceReporter tests
     @mock_autoscaling

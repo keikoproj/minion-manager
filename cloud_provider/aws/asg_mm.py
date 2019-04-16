@@ -1,4 +1,6 @@
 """ Metadata for each Autoscaling group in AWS. """
+MINION_MANAGER_LABEL = 'k8s-minion-manager'
+NOT_TERMINATE_LABEL = MINION_MANAGER_LABEL+'/not-terminate'
 
 
 class AWSAutoscalinGroupMM(object):
@@ -30,9 +32,14 @@ class AWSAutoscalinGroupMM(object):
         assert asg_info is not None, "Can't set ASG info to None!"
         self.asg_info = asg_info
         for tag in self.asg_info['Tags']:
-            if tag.get('Key', None) == 'k8s-minion-manager':
+            if tag.get('Key', None) == MINION_MANAGER_LABEL:
                 if tag['Value'] not in ("use-spot", "no-spot"):
                     tag['Value'] = 'no-spot'
+            elif tag.get('Key', None) == NOT_TERMINATE_LABEL:
+                if tag['Value'] in ('true', 'True', 'TRUE'):
+                    tag['Value'] = True
+                else:
+                    tag['Value'] = False
 
     def set_lc_info(self, lc_info):
         """ Sets the lc_info. """
@@ -83,7 +90,7 @@ class AWSAutoscalinGroupMM(object):
 
     def get_mm_tag(self):
         for tag in self.asg_info['Tags']:
-            if tag.get('Key', None) == 'k8s-minion-manager':
+            if tag.get('Key', None) == MINION_MANAGER_LABEL:
                 return tag['Value'].lower()
         return "no-spot"
 
@@ -108,3 +115,10 @@ class AWSAutoscalinGroupMM(object):
             return False
 
         return True
+
+    def not_terminate_instance(self):
+        """ Retures is the ASG set not terminate instance """
+        for tag in self.asg_info['Tags']:
+            if tag.get('Key', None) == NOT_TERMINATE_LABEL:
+                return tag['Value']
+        return False
