@@ -28,6 +28,7 @@ The IAM role of the node that runs the minion-manager should have the following 
         "ec2:DescribeInstances",
         "ec2:TerminateInstances",
         "ec2:DescribeSpotPriceHistory",
+        "ec2:DescribeSpotInstanceRequests",
         "autoscaling:CreateLaunchConfiguration",
         "autoscaling:DeleteLaunchConfiguration",
         "autoscaling:DescribeLaunchConfigurations",
