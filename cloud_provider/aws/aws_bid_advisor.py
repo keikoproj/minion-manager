@@ -169,8 +169,7 @@ class AWSBidAdvisor(object):
             self.bid_advisor = bid_advisor
 
         @retry(wait_exponential_multiplier=1000, stop_max_attempt_number=3)
-        def get_spot_price_info(self):
-            """ Issues AWS apis to get spot instance prices. """
+        def ec2_get_spot_price_history(self):
             ec2 = self.bid_advisor.ec2
             hour_ago = datetime.now() - timedelta(hours=1)
             spot_price_info = []
@@ -186,9 +185,13 @@ class AWSBidAdvisor(object):
                     if response['NextToken']:
                         next_token = response['NextToken']
                     else:
-                        break
+                        return spot_price_info
                 except Exception as ex:
                     raise Exception("Failed to get spot instance pricing info: " + str(ex))
+
+        def get_spot_price_info(self):
+            """ Issues AWS apis to get spot instance prices. """
+            spot_price_info = self.ec2_get_spot_price_history()
             with self.bid_advisor.lock:
                 self.bid_advisor.spot_price_list = spot_price_info
             logger.info("Spot instance pricing info updated")
