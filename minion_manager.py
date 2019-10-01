@@ -20,7 +20,7 @@ def validate_usr_args(usr_args):
     Validates the arguments provided by the user.
     """
     assert usr_args.cloud.lower() == "aws", "Only AWS is currently supported."
-    assert usr_args.cluster_name != None, "Cluster name is required"
+    assert usr_args.cluster_name is not None, "Cluster name is required"
     if "profile" not in usr_args:
         usr_args.profile = None
 
@@ -39,7 +39,8 @@ def run():
     parser.add_argument("--profile", help="Credentials profile to use")
     parser.add_argument("--refresh-interval-seconds", default="300",
                         help="Interval in seconds at which to query AWS")
-    parser.add_argument("--cluster-name", required=True, help="Name of the Kubernetes cluster. Get's used for identifying ASGs")
+    parser.add_argument("--cluster-name", required=True,
+                        help="Name of the Kubernetes cluster. Get's used for identifying ASGs")
 
     usr_args = parser.parse_args()
     validate_usr_args(usr_args)
