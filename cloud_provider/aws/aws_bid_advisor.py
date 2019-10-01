@@ -209,7 +209,7 @@ class AWSBidAdvisor(object):
 
     def run(self):
         """ Main method of the AWSBidAdvisor. """
-        if len(self.all_bid_advisor_threads) > 0:
+        if self.all_bid_advisor_threads:
             logger.debug("BidAdvisor already running!")
             return
 
@@ -234,8 +234,7 @@ class AWSBidAdvisor(object):
             logger.info("Waiting for initial pricing information...")
             try:
                 with self.lock:
-                    if len(self.on_demand_price_dict) != 0 and \
-                            len(self.spot_price_list) != 0:
+                    if self.on_demand_price_dict and self.spot_price_list:
                         return
             finally:
                 time.sleep(SECONDS_PER_MINUTE)
@@ -326,8 +325,7 @@ class AWSBidAdvisor(object):
         """
 
         with self.lock:
-            if len(self.on_demand_price_dict) == 0 or \
-                    len(self.spot_price_list) == 0:
+            if not self.on_demand_price_dict or not self.spot_price_list:
                 logger.info("Pricing data not available! Using DEFAULT_BID")
                 return DEFAULT_BID
 
