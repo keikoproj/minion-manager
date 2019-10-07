@@ -1,12 +1,10 @@
 """ Metadata for each Autoscaling group in AWS. """
 MINION_MANAGER_LABEL = 'k8s-minion-manager'
-NOT_TERMINATE_LABEL = MINION_MANAGER_LABEL+'/not-terminate'
+NOT_TERMINATE_LABEL = 'k8s-minion-manager/not-terminate'
 
 
 class AWSAutoscalinGroupMM(object):
-    """
-    This class has metadata associated with an autoscaling group.
-    """
+    """This class has metadata associated with an autoscaling group."""
 
     def __init__(self):
         # 'asg_info' is populated with the returned value of
@@ -32,11 +30,11 @@ class AWSAutoscalinGroupMM(object):
         assert asg_info is not None, "Can't set ASG info to None!"
         self.asg_info = asg_info
         for tag in self.asg_info['Tags']:
-            if tag.get('Key', None) == MINION_MANAGER_LABEL:
+            if tag.get('Key') == MINION_MANAGER_LABEL:
                 if tag['Value'] not in ("use-spot", "no-spot"):
                     tag['Value'] = 'no-spot'
-            elif tag.get('Key', None) == NOT_TERMINATE_LABEL:
-                if tag['Value'] in ('true', 'True', 'TRUE'):
+            elif tag.get('Key') == NOT_TERMINATE_LABEL:
+                if tag['Value'].lower() == 'true':
                     tag['Value'] = True
                 else:
                     tag['Value'] = False
@@ -64,20 +62,15 @@ class AWSAutoscalinGroupMM(object):
         return self.bid_info
 
     def add_instances(self, instances):
-        """
-        Adds the given instances to the 'instances' array if they're not
+        """Adds the given instances to the 'instances' array if they're not
         present.
         """
         for instance in instances:
-            if instance.InstanceId in self.instance_info.keys():
-                continue
-            else:
+            if instance.InstanceId not in self.instance_info:
                 self.instance_info[instance.InstanceId] = instance
 
     def remove_instance(self, instance_id):
-        """
-        Removes the given instance from the 'instances' array.
-        """
+        """Removes the given instance from the 'instances' array."""
         self.instance_info.pop(instance_id, None)
 
     def get_instance_info(self):
@@ -90,7 +83,7 @@ class AWSAutoscalinGroupMM(object):
 
     def get_mm_tag(self):
         for tag in self.asg_info['Tags']:
-            if tag.get('Key', None) == MINION_MANAGER_LABEL:
+            if tag.get('Key') == MINION_MANAGER_LABEL:
                 return tag['Value'].lower()
         return "no-spot"
 
@@ -119,6 +112,6 @@ class AWSAutoscalinGroupMM(object):
     def not_terminate_instance(self):
         """ Retures is the ASG set not terminate instance """
         for tag in self.asg_info['Tags']:
-            if tag.get('Key', None) == NOT_TERMINATE_LABEL:
+            if tag.get('Key') == NOT_TERMINATE_LABEL:
                 return tag['Value']
         return False
