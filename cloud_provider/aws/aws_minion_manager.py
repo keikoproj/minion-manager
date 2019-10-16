@@ -452,11 +452,13 @@ class AWSMinionManager(MinionManagerBase):
 
                 # Cordon and drain the node first
                 self.cordon_node(instance)
-
-                self._ec2_client.terminate_instances(InstanceIds=[instance.InstanceId])
+                
+                # Terminate EC2 uisng autoscaling client
+                self._ac_client.terminate_instance_in_auto_scaling_group(InstanceId=instance.InstanceId,
+                                                                         ShouldDecrementDesiredCapacity=False)
                 logger.info("Terminated instance %s", instance.InstanceId)
                 asg_meta.remove_instance(instance.InstanceId)
-                logger.info("Removed instance %s from ASG %s", instance.InstanceId,asg_meta.get_name())
+                logger.info("Removed instance %s from ASG %s", instance.InstanceId, asg_meta.get_name())
                 logger.info("Sleeping 180s before checking ASG")
                 time.sleep(180)
                 self.wait_for_all_running(asg_meta)
