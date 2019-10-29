@@ -26,6 +26,6 @@ jobs:
         #pip install -r requirements.txt
     - name: Test with pytest
       run: |
-        pip install pytest
+        pip install pytest pipenv
         pipenv install
         make test
