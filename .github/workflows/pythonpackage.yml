@@ -27,3 +27,4 @@ jobs:
       run: |
         pip install pytest pipenv
         pipenv install --system --deploy --dev
+        pytest .
