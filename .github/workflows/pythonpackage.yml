@@ -28,4 +28,4 @@ jobs:
       run: |
         pip install pytest pipenv
         pipenv install
-        #pipenv run make test
+        pipenv run pytest
