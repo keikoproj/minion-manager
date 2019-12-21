@@ -18,6 +18,7 @@ from constants import SECONDS_PER_MINUTE, SECONDS_PER_HOUR
 from cloud_provider.aws.aws_bid_advisor import AWSBidAdvisor
 from cloud_provider.aws.price_info_reporter import AWSPriceReporter
 from kubernetes import client, config
+from kubernetes.client.rest import ApiException
 from ..base import MinionManagerBase
 from .asg_mm import AWSAutoscalinGroupMM, MINION_MANAGER_LABEL
 
@@ -44,6 +45,8 @@ class AWSMinionManager(MinionManagerBase):
                                          profile_name=aws_profile)
         else:
             boto_session = boto3.Session(region_name=region)
+
+        self.incluster = kwargs.get("incluster", True)
         self._ac_client = boto_session.client('autoscaling')
         self._ec2_client = boto_session.client('ec2')
 
@@ -163,6 +166,41 @@ class AWSMinionManager(MinionManagerBase):
                         asg.AutoScalingGroupName,
                         launch_config.LaunchConfigurationName, bid_info)
 
+    def log_k8s_event(self, asg_name, price="", useSpot=False):
+        msg_str = '{"apiVersion":"v1alpha1","spotPrice":' + price + ', "useSpot": ' + str(useSpot) + '}'
+        if not self.incluster:
+            logger.info(msg_str)
+            return
+
+        try:
+            config.load_incluster_config()
+            v1 = client.CoreV1Api()
+            event_timestamp = datetime.now(pytz.utc)
+            event_name = "spot-instance-update"
+            new_event = client.V1Event(
+                count=1,
+                first_timestamp=event_timestamp,
+                involved_object=client.V1ObjectReference(
+                    kind="SpotPriceInfo",
+                    name=asg_name,
+                ),
+                last_timestamp=event_timestamp,
+                metadata=client.V1ObjectMeta(
+                    generate_name=event_name,
+                ),
+                message=msg_str,
+                reason="SpotRecommendationGiven",
+                source=client.V1EventSource(
+                    component="minion-manager",
+                ),
+                type="Normal",
+            )
+
+            v1.create_namespaced_event(namespace="default", body=new_event)
+            logger.info("Spot price info event logged")
+        except Exception as e:
+            logger.info("Failed to log event: " + str(e))
+
     def update_needed(self, asg_meta):
         """ Checks if an ASG needs to be updated. """
         try:
@@ -171,16 +209,24 @@ class AWSMinionManager(MinionManagerBase):
             if asg_tag == "no-spot":
                 if bid_info["type"] == "spot":
                     logger.info("ASG %s configured with on-demand but currently using spot. Update needed", asg_meta.get_name())
+                    # '{"apiVersion":"v1alpha1","spotPrice":bid_info["price"], "useSpot": true}'
+                    self.log_k8s_event(asg_meta.get_name(), bid_info.get("price", ""), True)
                     return True
                 elif bid_info["type"] == "on-demand":
                     logger.info("ASG %s configured with on-demand and currently using on-demand. No update needed", asg_meta.get_name())
+                    # '{"apiVersion":"v1alpha1","spotPrice":"", "useSpot": false}'
+                    self.log_k8s_event(asg_meta.get_name(), "", False)
                     return False
 
             # The asg_tag is "spot".
             if bid_info["type"] == "on-demand":
                 logger.info("ASG %s configured with spot but currently using on-demand. Update needed", asg_meta.get_name())
+                # '{"apiVersion":"v1alpha1","spotPrice":"", "useSpot": false}'
+                self.log_k8s_event(asg_meta.get_name(), "", True)
                 return True
-
+            else:
+                # Continue to use spot
+                self.log_k8s_event(asg_meta.get_name(), bid_info.get("price", ""), True)
             assert bid_info["type"] == "spot"
             if self.check_scaling_group_instances(asg_meta):
                 # Desired # of instances running. No updates needed.
