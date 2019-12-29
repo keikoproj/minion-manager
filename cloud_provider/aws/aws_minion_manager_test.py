@@ -98,7 +98,7 @@ class AWSMinionManagerTest(unittest.TestCase):
         some basic sanity tests before returning it.
         """
         self.create_mock_asgs(minion_manager_tag, not_terminate)
-        aws_mm = AWSMinionManager(self.cluster_name_id, "us-west-2", refresh_interval_seconds=50)
+        aws_mm = AWSMinionManager(self.cluster_name_id, "us-west-2", refresh_interval_seconds=50, incluster=False)
         assert len(aws_mm.get_asg_metas()) == 0, \
             "ASG Metadata already populated?"
 
