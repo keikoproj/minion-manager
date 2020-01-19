@@ -49,6 +49,7 @@ class AWSMinionManager(MinionManagerBase):
         self.incluster = kwargs.get("incluster", True)
         self._ac_client = boto_session.client('autoscaling')
         self._ec2_client = boto_session.client('ec2')
+        self._events_only = kwargs.get("events_only", False)
 
         self._refresh_interval_seconds = refresh_interval_seconds
         self._asg_metas = []
@@ -379,6 +380,10 @@ class AWSMinionManager(MinionManagerBase):
         logger.info("ASG(%s): New launch-config name: %s",
                     asg_meta.get_name(), new_lc_name)
 
+        if self._events_only:
+            logger.info("Minion-manager configured for only generating events. No changes to launch config will be made.")
+            return
+
         if spot_price is None:
             self.create_lc_on_demand(new_lc_name, launch_config)
         else:
@@ -542,10 +547,13 @@ class AWSMinionManager(MinionManagerBase):
         if len(instances) == 0:
             return
         
-        """
-        Check is ASG set not to terminate instance
-        """
+        # Check if ASG set not to terminate instance
         if asg_meta.not_terminate_instance():
+            return
+
+        # Check if the minion-manager is only configured to log events.
+        if self._events_only:
+            logger.info("Minion-manager configured for only generating events. No instances will be terminated.")
             return
 
         # If the ASG is configured to use "no-spot" or the required tag does not exist,
@@ -630,6 +638,8 @@ class AWSMinionManager(MinionManagerBase):
     def minion_manager_work(self):
         """ The main work for dealing with spot-instances happens here. """
         logger.info("Running minion-manager...")
+        if self._events_only:
+            logger.info("Only logging events\n")
         while True:
             try:
                 # Iterate over all asgs and update them if needed.

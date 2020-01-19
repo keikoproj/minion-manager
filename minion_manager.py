@@ -41,6 +41,8 @@ def run():
                         help="Interval in seconds at which to query AWS")
     parser.add_argument("--cluster-name", required=True,
                         help="Name of the Kubernetes cluster. Get's used for identifying ASGs")
+    parser.add_argument("--events-only", action='store_true', required=False,
+                        help="Whether minion-manager should only emit events and *not* actually do spot/on-demand changes to launch-config")
 
     usr_args = parser.parse_args()
     validate_usr_args(usr_args)
@@ -52,7 +54,7 @@ def run():
     if usr_args.cloud == "aws":
         minion_manager = Broker.get_impl_object(
             usr_args.cloud, usr_args.cluster_name, usr_args.region, int(usr_args.refresh_interval_seconds),
-            aws_profile=usr_args.profile)
+            aws_profile=usr_args.profile, events_only=usr_args.events_only)
         minion_manager.run()
 
 # A journey of a thousand miles ...

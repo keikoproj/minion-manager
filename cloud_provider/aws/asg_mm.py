@@ -110,7 +110,7 @@ class AWSAutoscalinGroupMM(object):
         return True
 
     def not_terminate_instance(self):
-        """ Retures is the ASG set not terminate instance """
+        """ Returns if the ASG is configure to not terminate instances """
         for tag in self.asg_info['Tags']:
             if tag.get('Key') == NOT_TERMINATE_LABEL:
                 return tag['Value']
