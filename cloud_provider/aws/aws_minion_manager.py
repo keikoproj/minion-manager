@@ -222,8 +222,8 @@ class AWSMinionManager(MinionManagerBase):
             # The asg_tag is "spot".
             if bid_info["type"] == "on-demand":
                 logger.info("ASG %s configured with spot but currently using on-demand. Update needed", asg_meta.get_name())
-                # '{"apiVersion":"v1alpha1","spotPrice":"", "useSpot": false}'
-                self.log_k8s_event(asg_meta.get_name(), "", True)
+                # '{"apiVersion":"v1alpha1","spotPrice":"", "useSpot": true}'
+                self.log_k8s_event(asg_meta.get_name(), bid_info.get("price", ""), True)
                 return True
             else:
                 # Continue to use spot
