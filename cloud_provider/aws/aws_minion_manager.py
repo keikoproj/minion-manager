@@ -202,20 +202,32 @@ class AWSMinionManager(MinionManagerBase):
         except Exception as e:
             logger.info("Failed to log event: " + str(e))
 
+    def get_new_bid_info(self, asg_meta):
+        """ get new bid price. """
+        new_bid_info = self.bid_advisor.get_new_bid(
+                        zones=asg_meta.asg_info.AvailabilityZones,
+                        instance_type=asg_meta.lc_info.InstanceType)
+        return new_bid_info
+
     def update_needed(self, asg_meta):
         """ Checks if an ASG needs to be updated. """
         try:
+            current_price = ""
             asg_tag = asg_meta.get_mm_tag()
             bid_info = asg_meta.get_bid_info()
+            if not bid_info.get("price"):
+                if self.get_new_bid_info(asg_meta).get("price"):
+                    current_price = self.get_new_bid_info(asg_meta).get("price") 
+
             if asg_tag == "no-spot":
                 if bid_info["type"] == "spot":
                     logger.info("ASG %s configured with on-demand but currently using spot. Update needed", asg_meta.get_name())
-                    # '{"apiVersion":"v1alpha1","spotPrice":bid_info["price"], "useSpot": true}'
-                    self.log_k8s_event(asg_meta.get_name(), bid_info.get("price", ""), True)
+                    # '{"apiVersion":"v1alpha1","spotPrice":bid_info["price"], "useSpot": False}'
+                    self.log_k8s_event(asg_meta.get_name(), current_price, False)
                     return True
                 elif bid_info["type"] == "on-demand":
                     logger.info("ASG %s configured with on-demand and currently using on-demand. No update needed", asg_meta.get_name())
-                    # '{"apiVersion":"v1alpha1","spotPrice":"", "useSpot": false}'
+                    # '{"apiVersion":"v1alpha1","spotPrice":"", "useSpot": False}'
                     self.log_k8s_event(asg_meta.get_name(), "", False)
                     return False
 
@@ -223,11 +235,11 @@ class AWSMinionManager(MinionManagerBase):
             if bid_info["type"] == "on-demand":
                 logger.info("ASG %s configured with spot but currently using on-demand. Update needed", asg_meta.get_name())
                 # '{"apiVersion":"v1alpha1","spotPrice":"", "useSpot": true}'
-                self.log_k8s_event(asg_meta.get_name(), bid_info.get("price", ""), True)
+                self.log_k8s_event(asg_meta.get_name(), current_price, True)
                 return True
             else:
                 # Continue to use spot
-                self.log_k8s_event(asg_meta.get_name(), bid_info.get("price", ""), True)
+                self.log_k8s_event(asg_meta.get_name(), current_price, True)
             assert bid_info["type"] == "spot"
             if self.check_scaling_group_instances(asg_meta):
                 # Desired # of instances running. No updates needed.
@@ -664,9 +676,7 @@ class AWSMinionManager(MinionManagerBase):
                         self.update_scaling_group(asg_meta, new_bid_info)
                         continue
 
-                    new_bid_info = self.bid_advisor.get_new_bid(
-                        zones=asg_meta.asg_info.AvailabilityZones,
-                        instance_type=asg_meta.lc_info.InstanceType)
+                    new_bid_info = self.get_new_bid_info(asg_meta)
                     
                     # Change ASG to on-demand if insufficient capacity
                     if self.check_insufficient_capacity(asg_meta):
