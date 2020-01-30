@@ -168,7 +168,7 @@ class AWSMinionManager(MinionManagerBase):
                         launch_config.LaunchConfigurationName, bid_info)
 
     def log_k8s_event(self, asg_name, price="", useSpot=False):
-        msg_str = '{"apiVersion":"v1alpha1","spotPrice":' + price + ', "useSpot": ' + str(useSpot) + '}'
+        msg_str = '{"apiVersion":"v1alpha1","spotPrice":"' + price + '", "useSpot": ' + str(useSpot).lower() + '}'
         if not self.incluster:
             logger.info(msg_str)
             return
