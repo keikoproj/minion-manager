@@ -3,6 +3,7 @@
 import logging
 import re
 import sys
+import os
 import time
 import base64
 from datetime import datetime
@@ -169,6 +170,7 @@ class AWSMinionManager(MinionManagerBase):
 
     def log_k8s_event(self, asg_name, price="", useSpot=False):
         msg_str = '{"apiVersion":"v1alpha1","spotPrice":"' + price + '", "useSpot": ' + str(useSpot).lower() + '}'
+        mm_namespace = os.getenv('MINION_MANAGER_NAMESPACE', 'default')
         if not self.incluster:
             logger.info(msg_str)
             return
@@ -184,6 +186,7 @@ class AWSMinionManager(MinionManagerBase):
                 involved_object=client.V1ObjectReference(
                     kind="SpotPriceInfo",
                     name=asg_name,
+                    namespace=mm_namespace,
                 ),
                 last_timestamp=event_timestamp,
                 metadata=client.V1ObjectMeta(
@@ -197,7 +200,7 @@ class AWSMinionManager(MinionManagerBase):
                 type="Normal",
             )
 
-            v1.create_namespaced_event(namespace="default", body=new_event)
+            v1.create_namespaced_event(namespace=mm_namespace, body=new_event)
             logger.info("Spot price info event logged")
         except Exception as e:
             logger.info("Failed to log event: " + str(e))
@@ -212,12 +215,12 @@ class AWSMinionManager(MinionManagerBase):
     def update_needed(self, asg_meta):
         """ Checks if an ASG needs to be updated. """
         try:
-            current_price = ""
             asg_tag = asg_meta.get_mm_tag()
             bid_info = asg_meta.get_bid_info()
             if not bid_info.get("price"):
-                if self.get_new_bid_info(asg_meta).get("price"):
-                    current_price = self.get_new_bid_info(asg_meta).get("price") 
+                current_price = self.get_new_bid_info(asg_meta).get("price") or ""
+            else:
+                current_price = bid_info.get("price")
 
             if asg_tag == "no-spot":
                 if bid_info["type"] == "spot":
@@ -371,6 +374,10 @@ class AWSMinionManager(MinionManagerBase):
         Updates the AWS AutoScalingGroup. Makes the next_bid_info as the new
         bid_info.
         """
+        if self._events_only:
+            logger.info("Minion-manager configured for only generating events. No changes to launch config will be made.")
+            return
+
         logger.info("Updating ASG: %s, Bid: %s", asg_meta.get_name(),
                     new_bid_info)
         launch_config = asg_meta.get_lc_info()
@@ -391,10 +398,6 @@ class AWSMinionManager(MinionManagerBase):
             new_lc_name = launch_config.LaunchConfigurationName + "-0"
         logger.info("ASG(%s): New launch-config name: %s",
                     asg_meta.get_name(), new_lc_name)
-
-        if self._events_only:
-            logger.info("Minion-manager configured for only generating events. No changes to launch config will be made.")
-            return
 
         if spot_price is None:
             self.create_lc_on_demand(new_lc_name, launch_config)
@@ -685,7 +688,7 @@ class AWSMinionManager(MinionManagerBase):
                         self.update_scaling_group(asg_meta, new_bid_info)
                         continue
 
-                    # Update ASGs iff new bid is different from current bid.
+                    # Update ASGs if new bid is different from current bid.
                     if self.are_bids_equal(asg_meta.bid_info, new_bid_info):
                         logger.info("No change in bid info for %s",
                                    asg_meta.get_name())
