@@ -21,9 +21,16 @@ logger = logging.getLogger("aws.minion-manager.bid-advisor")
 # https://aws.amazon.com/blogs/aws/new-aws-price-list-api/
 # Info about reading the csv:
 # http://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/reading-an-offer.html
-AWS_PRICING_URL = 'https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/index.csv'
 HOURLY_TERM_CODE = 'JRTCKXETXF'
 RATE_CODE = '6YS6EN2CT7'
+
+def aws_pricing_url(region):
+    """
+    retruns URL per region, Using the Bulk API
+    """
+    base_url = "https://pricing.us-east-1.amazonaws.com"
+    url = "{0}/offers/v1.0/aws/AmazonEC2/current/{1}/index.csv".format(base_url, region)
+    return url
 
 # The pricing API provided above only uses long region names and not the short
 # one (like us-west-2). And, there
@@ -129,7 +136,7 @@ class AWSBidAdvisor(object):
         @retry(wait_exponential_multiplier=1000, stop_max_attempt_number=3)
         def get_on_demand_pricing(self):
             """ Issues the AWS api for getting on-demand pricing info. """
-            resp = requests.get(url=AWS_PRICING_URL, stream=True)
+            resp = requests.get(url=aws_pricing_url(self.bid_advisor.region), stream=True)
             line_iterator = resp.iter_lines()
             line = None
             for line in line_iterator:
