@@ -170,7 +170,7 @@ class AWSMinionManager(MinionManagerBase):
 
     def log_k8s_event(self, asg_name, price="", useSpot=False):
         msg_str = '{"apiVersion":"v1alpha1","spotPrice":"' + price + '", "useSpot": ' + str(useSpot).lower() + '}'
-        mm_namespace = os.getenv('MINION_MANAGER_NAMESPACE', 'default')
+        event_namespace = os.getenv('EVENT_NAMESPACE', 'default')
         if not self.incluster:
             logger.info(msg_str)
             return
@@ -186,7 +186,7 @@ class AWSMinionManager(MinionManagerBase):
                 involved_object=client.V1ObjectReference(
                     kind="SpotPriceInfo",
                     name=asg_name,
-                    namespace=mm_namespace,
+                    namespace=event_namespace,
                 ),
                 last_timestamp=event_timestamp,
                 metadata=client.V1ObjectMeta(
@@ -200,7 +200,7 @@ class AWSMinionManager(MinionManagerBase):
                 type="Normal",
             )
 
-            v1.create_namespaced_event(namespace=mm_namespace, body=new_event)
+            v1.create_namespaced_event(namespace=event_namespace, body=new_event)
             logger.info("Spot price info event logged")
         except Exception as e:
             logger.info("Failed to log event: " + str(e))
