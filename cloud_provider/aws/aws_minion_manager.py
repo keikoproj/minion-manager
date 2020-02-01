@@ -688,7 +688,7 @@ class AWSMinionManager(MinionManagerBase):
                         self.update_scaling_group(asg_meta, new_bid_info)
                         continue
 
-                    # Update ASGs if new bid is different from current bid.
+                    # Update ASGs iff new bid is different from current bid.
                     if self.are_bids_equal(asg_meta.bid_info, new_bid_info):
                         logger.info("No change in bid info for %s",
                                    asg_meta.get_name())
