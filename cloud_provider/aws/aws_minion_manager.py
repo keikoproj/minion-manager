@@ -217,10 +217,7 @@ class AWSMinionManager(MinionManagerBase):
         try:
             asg_tag = asg_meta.get_mm_tag()
             bid_info = asg_meta.get_bid_info()
-            if not bid_info.get("price"):
-                current_price = self.get_new_bid_info(asg_meta).get("price") or ""
-            else:
-                current_price = bid_info.get("price")
+            current_price = self.get_new_bid_info(asg_meta).get("price") or ""
 
             if asg_tag == "no-spot":
                 if bid_info["type"] == "spot":
