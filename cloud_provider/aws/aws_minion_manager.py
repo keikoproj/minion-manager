@@ -109,6 +109,10 @@ class AWSMinionManager(MinionManagerBase):
         resp = ac_client.describe_auto_scaling_groups(MaxRecords=100)
         for r in resp["AutoScalingGroups"]:
             is_candidate = False
+            # skipping if ASG is using LaunchTemplate as it is not supported
+            if not r.get("LaunchConfigurationName"):
+                logger.warn("Skipping: asg %s is using LaunchTemplate", r.get("AutoScalingGroupName"))
+                continue
             # Scan for KubernetesCluster name. If the value matches the cluster_name
             # provided in the input, set 'is_candidate'.
             for tag in r['Tags']:
