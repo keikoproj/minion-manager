@@ -4,7 +4,8 @@ RUN pip install pipenv==2018.10.13
 WORKDIR /src
 COPY Pipfile /src/
 COPY Pipfile.lock /src/
-COPY binaries/kubectl-v1.12.3-linux-amd64 /usr/local/bin/kubectl
+RUN wget -O /usr/local/bin/kubectl https://storage.googleapis.com/kubernetes-release/release/v1.18.16/bin/linux/amd64/kubectl
+RUN chmod +x /usr/local/bin/kubectl
 
 # This will be used as Main Image
 FROM Base AS Main
@@ -19,4 +20,3 @@ FROM Base AS Dev
 
 RUN apk add --no-cache build-base openssl-dev libffi-dev 
 RUN pipenv install --system --deploy --dev
-#COPY . /src    
