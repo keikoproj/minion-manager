@@ -51,9 +51,9 @@ def run():
 
     usr_args = parser.parse_args()
     if usr_args.region is None:
-        sys.exit("Region must be specified")
+        sys.exit("Region must be specified. To see help, you can run -h.")
     if usr_args.cluster_name is None:
-        sys.exit("Name of the Kubernetes cluster must be specified")
+        sys.exit("Name of the Kubernetes cluster must be specified. To see help, you can run -h.")
 
     logger.info("Starting minion-manager for cluster: %s, in region %s for cloud provider %s",
                 usr_args.cluster_name,
