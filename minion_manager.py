@@ -41,7 +41,7 @@ def run():
                         default=config.get("region"))
     parser.add_argument("--cloud", default="aws", choices=['aws'], type=str.lower,
                         help="Cloud provider (only AWS as of now)")
-    parser.add_argument("--profile", help="Credentials profile to use", default=config.get("profile"),
+    parser.add_argument("--profile", help="Credentials profile to use", default=config.get("profile")
     parser.add_argument("--refresh-interval-seconds", type=int, default=config.get("refresh_interval_seconds", 300),
                         help="Interval in seconds at which to query AWS")
     parser.add_argument("--cluster-name", default=config.get("cluster_name"),
