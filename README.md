@@ -2,6 +2,12 @@
 
 The minion-manager enables the intelligent use of Spot Instances in Kubernetes.
 
+## 🚨 ⚠️THIS PROJECT IS NOW BEING ABANDONED ⚠️ 🚨
+
+We originally developed Minion Manager in 2018 to intelligently manage the use of AWS Spot Instances in Kubernetes. Since then, there have been many changes to how Kubernetes is run and operated in AWS, the most significant being the introduction of [EKS](https://aws.amazon.com/eks/), [Managed Node Groups](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html), and, most recently, [Karpenter](https://github.com/kubernetes-sigs/karpenter).
+
+We recommend [using Karpenter to manage Spot Instances](https://aws.amazon.com/blogs/containers/using-amazon-ec2-spot-instances-with-karpenter/).  The Minion Manager repository will be archived, and there will be no further updates or releases.
+
 ## What does it do?
 
 * The minion-manager operates on autoscaling groups (ASGs).
